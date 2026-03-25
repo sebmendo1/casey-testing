@@ -1,26 +1,181 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #fafbff;
+  --foreground: #002855;
+  --primary-blue: #002855;
+  --primary-navy: #002855;
+  --text-primary: #002855;
+  --text-secondary: rgba(0, 40, 85, 0.7);
+  --user-bubble: #ffffff;
+  --success-green: #002855;
+  --warning-amber: #002855;
+  --surface: #fafbff;
+  --surface-soft: #ffffff;
+  --border: rgba(0, 40, 85, 0.14);
+  --focus-ring: rgba(0, 40, 85, 0.34);
+  --interactive: #002855;
+  --primary-soft: #00285514;
+  --shadow-soft: 0 6px 20px rgba(0, 40, 85, 0.08), 0 2px 8px rgba(0, 40, 85, 0.05);
+  --shadow-card: 0 10px 28px rgba(0, 40, 85, 0.12), 0 2px 8px rgba(0, 40, 85, 0.06);
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-primary-blue: var(--primary-blue);
+  --color-primary-navy: var(--primary-navy);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-user-bubble: var(--user-bubble);
+  --color-success-green: var(--success-green);
+  --color-warning-amber: var(--warning-amber);
+  --font-sans: "Helvetica Neue", system-ui, sans-serif;
 }
 
 body {
-  background: var(--background);
+  background: var(--surface);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+  min-height: 100dvh;
+  touch-action: manipulation;
+  -webkit-font-smoothing: antialiased;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+  animation-fill-mode: forwards;
+}
+
+/** Loading row: thinking ↔ typing and step text changes */
+@keyframes loadingFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-loading-fade-in {
+  animation: loadingFadeIn 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes loadingLineIn {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.animate-loading-line {
+  animation: loadingLineIn 0.35s ease-out forwards;
+}
+
+@keyframes streamEnter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.message-stream-enter {
+  animation: streamEnter 0.24s ease-out forwards;
+}
+
+/** Softer than default Tailwind pulse for “Composing…” */
+@keyframes composePulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.animate-compose-pulse {
+  animation: composePulse 2s ease-in-out infinite;
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.15s ease-out forwards;
+}
+
+.selectable-chat-row {
+  cursor: pointer;
+  border-radius: 14px;
+  transition: box-shadow 0.18s ease-out, background-color 0.18s ease-out;
+}
+
+.selectable-chat-row:active {
+  background-color: var(--primary-soft);
+}
+
+.selectable-chat-row:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+.chat-row-selected {
+  box-shadow: 0 0 0 2px rgba(0, 40, 85, 0.2);
+  background-color: var(--primary-soft);
+}
+
+.chat-dissolve-top {
+  height: clamp(28px, 5.5dvh, 44px);
+  background: linear-gradient(to bottom, var(--surface) 0%, rgba(250, 251, 255, 0.86) 42%, rgba(250, 251, 255, 0) 100%);
+}
+
+.chat-dissolve-bottom {
+  height: clamp(44px, 8dvh, 68px);
+  background: linear-gradient(to top, var(--surface) 0%, rgba(250, 251, 255, 0.86) 45%, rgba(250, 251, 255, 0) 100%);
+}
+
+.header-dissolve-bottom {
+  height: 18px;
+  background: linear-gradient(to bottom, rgba(250, 251, 255, 0.95) 0%, rgba(250, 251, 255, 0) 100%);
+}
+
+.footer-dissolve-top {
+  height: 18px;
+  background: linear-gradient(to top, rgba(250, 251, 255, 0.95) 0%, rgba(250, 251, 255, 0) 100%);
+}
+
+.page-dissolve-top {
+  height: clamp(52px, 10dvh, 86px);
+  background: linear-gradient(to bottom, var(--surface) 0%, rgba(250, 251, 255, 0.92) 55%, rgba(250, 251, 255, 0) 100%);
+}
+
+.page-dissolve-bottom {
+  height: clamp(72px, 14dvh, 116px);
+  background: linear-gradient(to top, var(--surface) 0%, rgba(250, 251, 255, 0.94) 58%, rgba(250, 251, 255, 0) 100%);
 }
