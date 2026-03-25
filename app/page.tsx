@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from "react";
 import ChatHeader from "@/components/ChatHeader";
 import WelcomeScreen from "@/components/WelcomeScreen";
 import ChatMessage from "@/components/ChatMessage";
@@ -32,9 +32,7 @@ export default function Home() {
   const [session, setSession] = useState<HomebuyingSession>({ stage: "welcome" });
   const [inputMode, setInputMode] = useState<CaseyInputMode>("default");
   const [activeLoadingText, setActiveLoadingText] = useState<string | null>(null);
-  const [activeSendAnchorId, setActiveSendAnchorId] = useState<string | null>(null);
   const [isResponding, setIsResponding] = useState(false);
-  const [anchorMessageId, setAnchorMessageId] = useState<string | null>(null);
   const [selectedMessageId, setSelectedMessageId] = useState<string | null>(null);
   const [suggestions, setSuggestions] = useState<string[]>(WELCOME_SUGGESTIONS);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -42,7 +40,7 @@ export default function Home() {
   const msgCounterRef = useRef(0);
   const loadingDelayTimeoutRef = useRef<number | null>(null);
   const selectedFlashTimeoutRef = useRef<number | null>(null);
-  const pendingUserAnchorIdRef = useRef<string | null>(null);
+  const scrollTargetRef = useRef<string | null>(null);
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const typewriter = useTypewriterQueue({
@@ -200,35 +198,18 @@ export default function Home() {
     [clearSelectedFlashTimer]
   );
 
-  const scrollMessageToTop = useCallback((messageId: string, behavior: ScrollBehavior = "auto") => {
+  const scrollMessageToTop = useCallback((messageId: string) => {
     const container = scrollRef.current;
     const target = messageRefs.current[messageId];
     if (!container || !target) return false;
 
     const containerRect = container.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
-    const relativeTop = targetRect.top - containerRect.top;
-    const nextTop = Math.max(0, container.scrollTop + relativeTop - TOP_ANCHOR_OFFSET_PX);
-    container.scrollTo({ top: nextTop, behavior });
+    const desiredTop = container.scrollTop + (targetRect.top - containerRect.top) - TOP_ANCHOR_OFFSET_PX;
+    container.scrollTop = Math.max(0, desiredTop);
     return true;
   }, []);
 
-  const requestAnchorToTop = useCallback((messageId: string, flashSelection = false) => {
-    if (flashSelection) {
-      flashSelectedMessage(messageId);
-    }
-    setAnchorMessageId(messageId);
-  }, [flashSelectedMessage]);
-
-  const scheduleImmediateTopSnap = useCallback((messageId: string) => {
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        scrollMessageToTop(messageId, "auto");
-      });
-    });
-  }, [scrollMessageToTop]);
-
-  /** Back control: return to welcome and cancel any active streaming. */
   const resetToWelcome = useCallback(() => {
     clearLoadingDelayTimer();
     typewriter.cancel();
@@ -236,11 +217,9 @@ export default function Home() {
     setSession({ stage: "welcome" });
     setInputMode("default");
     setActiveLoadingText(null);
-    setActiveSendAnchorId(null);
     setIsResponding(false);
-    setAnchorMessageId(null);
     setSelectedMessageId(null);
-    pendingUserAnchorIdRef.current = null;
+    scrollTargetRef.current = null;
     setSuggestions(WELCOME_SUGGESTIONS);
   }, [typewriter, clearLoadingDelayTimer]);
 
@@ -251,45 +230,12 @@ export default function Home() {
     };
   }, [clearLoadingDelayTimer, clearSelectedFlashTimer]);
 
-  useEffect(() => {
-    if (!anchorMessageId) return;
-    let attempts = 0;
-    let raf = 0;
-
-    const tryAnchor = () => {
-      attempts += 1;
-      const anchored = scrollMessageToTop(anchorMessageId, "auto");
-      if (anchored) {
-        setAnchorMessageId(null);
-        return;
-      }
-      if (attempts >= 20) return;
-      raf = window.requestAnimationFrame(tryAnchor);
-    };
-
-    raf = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(tryAnchor);
-    });
-
-    return () => window.cancelAnimationFrame(raf);
-  }, [anchorMessageId, messages.length, scrollMessageToTop]);
-
-  useEffect(() => {
-    if (activeLoadingText === null || !activeSendAnchorId) return;
-    let attempts = 0;
-    let raf = 0;
-    const maxAttempts = 360;
-
-    const reanchor = () => {
-      attempts += 1;
-      scrollMessageToTop(activeSendAnchorId, "auto");
-      if (attempts >= maxAttempts) return;
-      raf = window.requestAnimationFrame(reanchor);
-    };
-
-    raf = window.requestAnimationFrame(reanchor);
-    return () => window.cancelAnimationFrame(raf);
-  }, [activeLoadingText, activeSendAnchorId, scrollMessageToTop]);
+  useLayoutEffect(() => {
+    const id = scrollTargetRef.current;
+    if (!id) return;
+    scrollTargetRef.current = null;
+    scrollMessageToTop(id);
+  }, [messages, scrollMessageToTop]);
 
   const handleSend = useCallback(
     (text: string) => {
@@ -301,11 +247,8 @@ export default function Home() {
         content: text,
       };
 
+      scrollTargetRef.current = userMessageId;
       setMessages((prev) => [...prev, userMessage]);
-      setActiveSendAnchorId(userMessageId);
-      requestAnchorToTop(userMessageId);
-      scheduleImmediateTopSnap(userMessageId);
-      pendingUserAnchorIdRef.current = userMessageId;
       setSuggestions([]);
       setIsResponding(true);
 
@@ -327,10 +270,7 @@ export default function Home() {
         const remaining = Math.max(0, requiredLoadingMs - elapsed);
         loadingDelayTimeoutRef.current = window.setTimeout(() => {
           setActiveLoadingText(null);
-          pendingUserAnchorIdRef.current = null;
-          setAnchorMessageId(null);
           streamAssistantMessage(response);
-          setActiveSendAnchorId(null);
           loadingDelayTimeoutRef.current = null;
         }, remaining);
       };
@@ -338,26 +278,21 @@ export default function Home() {
       typewriter.runQueue(loadingSegments, {
         onSegmentStart: () => {
           setActiveLoadingText("");
-          if (pendingUserAnchorIdRef.current) {
-            scrollMessageToTop(pendingUserAnchorIdRef.current, "auto");
-          }
         },
         onSegmentUpdate: (_segment, displayText) => {
           setActiveLoadingText(displayText);
-          if (pendingUserAnchorIdRef.current) {
-            scrollMessageToTop(pendingUserAnchorIdRef.current, "auto");
-          }
         },
         onQueueComplete: scheduleStream,
       });
     },
-    [clearLoadingDelayTimer, nextMessageId, requestAnchorToTop, scheduleImmediateTopSnap, scrollMessageToTop, session, streamAssistantMessage, typewriter]
+    [clearLoadingDelayTimer, nextMessageId, session, streamAssistantMessage, typewriter]
   );
 
   const handleRowSelect = useCallback((messageId: string) => {
-    if (activeSendAnchorId && activeLoadingText !== null) return;
-    requestAnchorToTop(messageId, true);
-  }, [activeLoadingText, activeSendAnchorId, requestAnchorToTop]);
+    if (isBusy) return;
+    flashSelectedMessage(messageId);
+    scrollMessageToTop(messageId);
+  }, [isBusy, flashSelectedMessage, scrollMessageToTop]);
 
   const shouldIgnoreRowSelection = (target: HTMLElement | null) => {
     if (!target) return true;
@@ -390,19 +325,18 @@ export default function Home() {
   const showWelcome = messages.length === 0;
 
   return (
-    <div className="min-h-dvh w-full overflow-hidden" style={{ backgroundColor: CHAT_SURFACE }}>
+    <div className="h-dvh w-full overflow-hidden" style={{ backgroundColor: CHAT_SURFACE }}>
       <div
-        className="relative flex min-h-dvh w-full min-h-0 flex-col overflow-hidden"
+        className="relative flex h-full w-full flex-col overflow-hidden"
         style={{ backgroundColor: CHAT_SURFACE }}
       >
-        <div className="mx-auto w-full max-w-[980px]">
+        <div className="mx-auto w-full max-w-[600px]">
           <ChatHeader onBack={resetToWelcome} />
         </div>
-        <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden" style={{ scrollBehavior: "smooth" }}>
+        <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           <div
             ref={scrollRef}
-            className="mx-auto flex min-h-0 w-full max-w-[980px] flex-1 flex-col overflow-y-auto overscroll-contain"
-            style={{ scrollBehavior: "smooth" }}
+            className="mx-auto flex min-h-0 w-full max-w-[600px] flex-1 flex-col overflow-y-auto overscroll-contain"
             onPointerDownCapture={(event) => {
               pointerStartRef.current = { x: event.clientX, y: event.clientY };
             }}
@@ -426,52 +360,55 @@ export default function Home() {
                 <WelcomeScreen onSuggestionClick={handleSuggestionClick} />
               </div>
             ) : (
-              <div className="px-6 py-6">
-                <div className="max-w-3xl space-y-6">
-                  {messages.map((msg) => (
-                    <div
-                      key={msg.id}
-                      data-message-id={msg.id}
-                      ref={(node) => {
-                        messageRefs.current[msg.id] = node;
-                      }}
-                      role="group"
-                      tabIndex={0}
-                      aria-label="Chat row"
-                      onKeyDown={(event) => {
-                        if (event.currentTarget !== event.target) return;
-                        if (event.key !== "Enter" && event.key !== " ") return;
-                        event.preventDefault();
-                        handleRowSelect(msg.id);
-                      }}
-                      className={`selectable-chat-row ${
-                        selectedMessageId === msg.id ? "chat-row-selected" : ""
-                      } ${msg.isStreaming ? "message-stream-enter" : "opacity-0 animate-fade-in"}`}
-                      style={msg.isStreaming ? undefined : { animationDelay: "50ms" }}
-                    >
-                      <ChatMessage
-                        role={msg.role}
-                        content={msg.content}
-                        displayContent={msg.displayContent}
-                        isStreaming={msg.isStreaming}
-                        blocks={msg.blocks}
-                        onAction={handleSuggestionClick}
-                      />
-                      {msg.role === "assistant" &&
-                        !msg.isStreaming &&
-                        msg.id === messages[messages.length - 1]?.id &&
-                        !isBusy && (
-                          <SuggestionPills suggestions={suggestions} onSelect={handleSuggestionClick} />
-                        )}
-                    </div>
-                  ))}
-                  {activeLoadingText !== null && (
-                    <div key="loading-status" className="message-stream-enter">
-                      <AssistantStatusLine text={activeLoadingText} />
-                    </div>
-                  )}
+              <>
+                <div className="px-6 py-6">
+                  <div className="space-y-6">
+                    {messages.map((msg) => (
+                      <div
+                        key={msg.id}
+                        data-message-id={msg.id}
+                        ref={(node) => {
+                          messageRefs.current[msg.id] = node;
+                        }}
+                        role="group"
+                        tabIndex={0}
+                        aria-label="Chat row"
+                        onKeyDown={(event) => {
+                          if (event.currentTarget !== event.target) return;
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          handleRowSelect(msg.id);
+                        }}
+                        className={`selectable-chat-row ${
+                          selectedMessageId === msg.id ? "chat-row-selected" : ""
+                        } ${msg.isStreaming ? "message-stream-enter" : "opacity-0 animate-fade-in"}`}
+                        style={msg.isStreaming ? undefined : { animationDelay: "50ms" }}
+                      >
+                        <ChatMessage
+                          role={msg.role}
+                          content={msg.content}
+                          displayContent={msg.displayContent}
+                          isStreaming={msg.isStreaming}
+                          blocks={msg.blocks}
+                          onAction={handleSuggestionClick}
+                        />
+                        {msg.role === "assistant" &&
+                          !msg.isStreaming &&
+                          msg.id === messages[messages.length - 1]?.id &&
+                          !isBusy && (
+                            <SuggestionPills suggestions={suggestions} onSelect={handleSuggestionClick} />
+                          )}
+                      </div>
+                    ))}
+                    {activeLoadingText !== null && (
+                      <div key="loading-status" className="message-stream-enter">
+                        <AssistantStatusLine text={activeLoadingText} />
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
+                <div className="shrink-0" aria-hidden style={{ minHeight: "100dvh" }} />
+              </>
             )}
           </div>
           <div className="chat-dissolve-top pointer-events-none absolute inset-x-0 top-0 z-10" aria-hidden />
@@ -479,7 +416,7 @@ export default function Home() {
         </main>
         {/* Pinned footer: not inside scroll region; stays at bottom of the shell */}
         <footer className="relative z-20 shrink-0 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-          <div className="mx-auto w-full max-w-[980px]">
+          <div className="mx-auto w-full max-w-[600px]">
             <ChatInputField
               onSend={handleSend}
               disabled={isBusy}

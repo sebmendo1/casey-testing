@@ -151,13 +151,13 @@ body {
 }
 
 .chat-dissolve-top {
-  height: clamp(28px, 5.5dvh, 44px);
-  background: linear-gradient(to bottom, var(--surface) 0%, rgba(250, 251, 255, 0.86) 42%, rgba(250, 251, 255, 0) 100%);
+  height: clamp(16px, 3dvh, 24px);
+  background: linear-gradient(to bottom, rgba(250, 251, 255, 0.45) 0%, rgba(250, 251, 255, 0.18) 50%, rgba(250, 251, 255, 0) 100%);
 }
 
 .chat-dissolve-bottom {
-  height: clamp(44px, 8dvh, 68px);
-  background: linear-gradient(to top, var(--surface) 0%, rgba(250, 251, 255, 0.86) 45%, rgba(250, 251, 255, 0) 100%);
+  height: 10px;
+  background: linear-gradient(to top, rgba(250, 251, 255, 0.4) 0%, rgba(250, 251, 255, 0.12) 50%, rgba(250, 251, 255, 0) 100%);
 }
 
 .header-dissolve-bottom {
