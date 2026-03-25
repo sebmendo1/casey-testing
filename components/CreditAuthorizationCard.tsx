@@ -5,12 +5,45 @@ import type { CreditAuthorizationData } from "@/lib/types";
 interface CreditAuthorizationCardProps {
   data: CreditAuthorizationData;
   onToggle?: (actionLabel: string) => void;
+  onOpenAuthorize?: () => void;
 }
 
-export default function CreditAuthorizationCard({ data, onToggle }: CreditAuthorizationCardProps) {
+function InlineCardIcon() {
+  return (
+    <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-[#00285514]">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" aria-hidden>
+        <rect x="3" y="6" width="18" height="12" rx="2" stroke="#002855" strokeWidth="1.5" />
+        <path d="M3 10h18" stroke="#002855" strokeWidth="1.5" />
+        <circle cx="17" cy="14" r="2.5" fill="#002855" fillOpacity="0.35" />
+      </svg>
+    </span>
+  );
+}
+
+export default function CreditAuthorizationCard({ data, onToggle, onOpenAuthorize }: CreditAuthorizationCardProps) {
+  const isInline = data.variant === "inline";
+
+  if (isInline) {
+    return (
+      <button
+        type="button"
+        data-no-row-select="true"
+        onClick={(event) => {
+          event.stopPropagation();
+          onOpenAuthorize?.();
+        }}
+        className="flex w-full items-center gap-3 rounded-[1.25rem] border border-[#00285512] bg-[#f0f2f8] px-4 py-4 text-left shadow-[0_6px_18px_rgba(0,40,85,0.05),0_1px_4px_rgba(0,40,85,0.03)] transition-transform active:scale-[0.99]"
+      >
+        <InlineCardIcon />
+        <span className="text-[16px] font-semibold leading-tight text-[#002855]">{data.actionLabel}</span>
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
+      data-no-row-select="true"
       onClick={(event) => {
         event.stopPropagation();
         onToggle?.(data.actionLabel);
@@ -30,9 +63,11 @@ export default function CreditAuthorizationCard({ data, onToggle }: CreditAuthor
         </span>
         <p className="text-[16px] font-semibold leading-[1.3] text-[#002855]">{data.label}</p>
       </div>
-      <p className="mt-4 text-[16px] leading-[20px] text-[#002855cc] underline underline-offset-2">
-        {data.detailsLinkText}
-      </p>
+      {data.detailsLinkText ? (
+        <p className="mt-4 text-[16px] leading-[20px] text-[#002855cc] underline underline-offset-2">
+          {data.detailsLinkText}
+        </p>
+      ) : null}
     </button>
   );
 }

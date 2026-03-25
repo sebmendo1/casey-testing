@@ -1,7 +1,5 @@
 "use client";
 
-const HEADER_TEXT = "#002855";
-
 interface ChatHeaderProps {
   /** Return to welcome / clear chat (e.g. from main screen). */
   onBack?: () => void;
@@ -23,10 +21,7 @@ export default function ChatHeader({ onBack }: ChatHeaderProps) {
           </svg>
         </button>
 
-        <span
-          className="text-[17px] font-semibold tracking-tight"
-          style={{ color: HEADER_TEXT }}
-        >
+        <span className="text-[17px] font-semibold tracking-tight text-[color:var(--text-primary)]">
           Casey AI
         </span>
 

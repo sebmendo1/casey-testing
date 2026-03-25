@@ -17,7 +17,8 @@ const openSans = Open_Sans({
 
 function classForKind(kind: RichTextSegmentKind): string {
   void kind;
-  return "text-[16px] font-normal leading-[20px] text-[#002855cc]";
+  /** Body scale — see globals.css type scale */
+  return "text-[16px] font-normal leading-[20px] text-[color:var(--text-secondary)]";
 }
 
 export default function AssistantRichText({

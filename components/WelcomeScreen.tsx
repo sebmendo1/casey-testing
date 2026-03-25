@@ -8,8 +8,6 @@ interface WelcomeScreenProps {
   onSuggestionClick: (text: string) => void;
 }
 
-const HEADLINE = "#002855";
-
 const PROMPTS = [
   {
     text: "Apply for a home loan",
@@ -30,13 +28,13 @@ export default function WelcomeScreen({ onSuggestionClick }: WelcomeScreenProps)
     <div className="flex flex-1 flex-col items-start px-6 pt-2">
       <div
         className="mb-4 opacity-0 animate-fade-in"
-        style={{ color: HEADLINE, animationDelay: "100ms" }}
+        style={{ color: "var(--text-primary)", animationDelay: "100ms" }}
       >
         <SparkleIcon size={28} />
       </div>
       <h1
         className="mb-8 max-w-[min(100%,22rem)] text-left text-[26px] font-bold leading-tight opacity-0 animate-fade-in"
-        style={{ color: HEADLINE, animationDelay: "200ms" }}
+        style={{ color: "var(--text-primary)", animationDelay: "200ms" }}
       >
         I&apos;m Casey, your digital home lending assistant
       </h1>

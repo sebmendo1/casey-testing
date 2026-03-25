@@ -1,5 +1,6 @@
 import type { CaseyResponse, HomebuyingSession } from "./types";
 import { thinkingStepsFromStrings } from "./aiThinking";
+import { formatAddressLine, maskSsn } from "./creditUtils";
 
 function normalizeInput(text: string): string {
   return text.trim().toLowerCase();
@@ -143,7 +144,7 @@ function moveToAssetsResult(session: HomebuyingSession, useAutoReview: boolean):
 }
 
 function buildApplicationSummary(session: HomebuyingSession) {
-  return [
+  const rows = [
     { label: "Journey stage", value: session.journeyStage ?? "Not provided" },
     { label: "Buy timeline", value: session.buyTimeline ?? "Not provided" },
     { label: "Agent status", value: session.agentStatus ?? "Not provided" },
@@ -153,11 +154,40 @@ function buildApplicationSummary(session: HomebuyingSession) {
       label: "Asset review",
       value: session.assetsReviewMode === "auto" ? "Auto-linked Casey accounts" : "Manual account review",
     },
-    {
-      label: "Soft credit check",
-      value: session.creditAuthorized ? "Authorized" : "Pending authorization",
-    },
   ];
+  if (session.creditForm) {
+    rows.push(
+      { label: "SSN", value: maskSsn(session.creditForm.ssn) },
+      { label: "Home address", value: formatAddressLine(session.creditForm) }
+    );
+  }
+  rows.push({
+    label: "Soft credit check",
+    value: session.creditAuthorized ? "Authorized" : "Pending authorization",
+  });
+  return rows;
+}
+
+/** Shown in chat after the credit wizard (SSN / address / review) is submitted. */
+export function getCreditThreadAfterWizard(session: HomebuyingSession): CaseyResponse {
+  return {
+    content:
+      "We have all your information ready.\n\nNow what we need is to run a soft credit check to verify your eligibility. Just remember: this operation will not affect your credit score in anyway.",
+    blocks: [
+      { type: "status_line", data: { text: "One last step to take" } },
+      {
+        type: "credit_authorization",
+        data: {
+          checked: false,
+          label: "Authorize soft credit check",
+          actionLabel: "Authorize soft credit check",
+          variant: "inline",
+        },
+      },
+    ],
+    session: { ...session, stage: "credit_authorization" },
+    thinkingSteps: SOFT_CREDIT_LOADING,
+  };
 }
 
 export function getCaseyResponse(
@@ -248,48 +278,49 @@ export function getCaseyResponse(
   if (session.stage === "assets_results") {
     if (includesAny(normalized, ["submit and continue", "submit"])) {
       return {
-        content:
-          "You're almost there!\n\nWe have all your information ready. Now what we need is to run a soft credit check. This will not affect your credit score in any way.",
+        content: "",
         suggestions: [],
         blocks: [
           {
             type: "status_line",
-            data: { text: "Preparing your application" },
-          },
-          {
-            type: "credit_authorization",
-            data: {
-              checked: false,
-              label: "I authorize Casey to run a soft credit check",
-              detailsLinkText: "Read the terms and conditions",
-              actionLabel: "Authorize soft credit check",
-            },
+            data: { text: "Planning next steps..." },
           },
         ],
-        session: { ...session, stage: "credit_authorization", creditAuthorized: false },
+        session: { ...session, stage: "credit_intro", creditAuthorized: false },
         thinkingSteps: SOFT_CREDIT_LOADING,
       };
     }
     return fallback(session);
   }
 
+  if (
+    session.stage === "credit_intro" ||
+    session.stage === "credit_ssn" ||
+    session.stage === "credit_address" ||
+    session.stage === "credit_review"
+  ) {
+    return {
+      content: "Use the credit check screens to continue — you can also tap Back if you need to change an answer.",
+      session,
+    };
+  }
+
   if (session.stage === "credit_authorization") {
-    if (includesAny(normalized, ["authorize soft credit check", "authorize", "credit check"])) {
+    if (
+      includesAny(normalized, ["soft credit check authorized", "credit check authorized"]) ||
+      normalized.includes("authorize soft credit")
+    ) {
       return {
         content:
-          "Great, your soft credit check is authorized.\n\nPlease review your application details before final confirmation.",
+          "Your soft credit check was successful! You're eligible for the loan.\n\nWhat would you like to do next?",
         blocks: [
+          { type: "status_line", data: { text: "Summarizing your application" } },
           {
-            type: "status_line",
-            data: { text: "Preparing your application" },
-          },
-          {
-            type: "credit_authorization",
+            type: "credit_status",
             data: {
-              checked: true,
-              label: "I authorize Casey to run a soft credit check",
-              detailsLinkText: "Read the terms and conditions",
-              actionLabel: "Authorize soft credit check",
+              title: "Credit Check",
+              statusLabel: "Verified",
+              subtext: "Soft check completed successfully.",
             },
           },
           {
@@ -304,7 +335,9 @@ export function getCaseyResponse(
             data: { label: "Confirm application" },
           },
         ],
+        suggestions: ["Review loan terms", "Talk to an agent"],
         session: { ...session, stage: "application_review", creditAuthorized: true },
+        thinkingSteps: thinkingStepsFromStrings(["Checking your credit... This will only take a moment."]),
       };
     }
     return fallback(session);
@@ -323,6 +356,39 @@ export function getCaseyResponse(
         ],
         suggestions: ["Back to start"],
         session: { ...session, stage: "confirmation" },
+      };
+    }
+    if (includesAny(normalized, ["review loan", "review loan terms"])) {
+      return {
+        content:
+          "Here's your application summary. Tap Confirm application when you're ready to submit your loan application.",
+        blocks: [
+          {
+            type: "application_summary",
+            data: {
+              title: "Review your application",
+              fields: buildApplicationSummary(session),
+            },
+          },
+          {
+            type: "inline_cta",
+            data: { label: "Confirm application" },
+          },
+        ],
+        session,
+      };
+    }
+    if (includesAny(normalized, ["talk to an agent"])) {
+      return {
+        content:
+          "We'll connect you with a mortgage specialist. You can still confirm your application below whenever you're ready.",
+        blocks: [
+          {
+            type: "inline_cta",
+            data: { label: "Confirm application" },
+          },
+        ],
+        session,
       };
     }
     return fallback(session);

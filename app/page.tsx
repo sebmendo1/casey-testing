@@ -7,8 +7,13 @@ import ChatMessage from "@/components/ChatMessage";
 import ChatInputField from "@/components/ChatInputField";
 import AssistantStatusLine from "@/components/AssistantStatusLine";
 import SuggestionPills from "@/components/SuggestionPills";
-import { getCaseyResponse } from "@/lib/conversations";
-import type { Message, CaseyResponse, CaseyInputMode, HomebuyingSession } from "@/lib/types";
+import { getCaseyResponse, getCreditThreadAfterWizard } from "@/lib/conversations";
+import type { Message, CaseyResponse, CaseyInputMode, HomebuyingSession, CreditFormData } from "@/lib/types";
+import CreditCheckWizard from "@/components/credit/CreditCheckWizard";
+import CreditAuthorizeModal from "@/components/credit/CreditAuthorizeModal";
+import CreditSuccessSheet from "@/components/credit/CreditSuccessSheet";
+import DisclosureLinkButton from "@/components/DisclosureLinkButton";
+import { emptyCreditForm } from "@/lib/creditUtils";
 import { useTypewriterQueue, type TypewriterSegment } from "@/hooks/useTypewriterQueue";
 
 const WELCOME_SUGGESTIONS = [
@@ -42,6 +47,9 @@ export default function Home() {
   const selectedFlashTimeoutRef = useRef<number | null>(null);
   const scrollTargetRef = useRef<string | null>(null);
   const pointerStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [creditDraft, setCreditDraft] = useState<CreditFormData>(() => emptyCreditForm());
+  const [creditModalOpen, setCreditModalOpen] = useState(false);
+  const [creditSuccessOpen, setCreditSuccessOpen] = useState(false);
 
   const typewriter = useTypewriterQueue({
     baseDelayMs: 15,
@@ -220,6 +228,9 @@ export default function Home() {
     setIsResponding(false);
     setSelectedMessageId(null);
     scrollTargetRef.current = null;
+    setCreditDraft(emptyCreditForm());
+    setCreditModalOpen(false);
+    setCreditSuccessOpen(false);
     setSuggestions(WELCOME_SUGGESTIONS);
   }, [typewriter, clearLoadingDelayTimer]);
 
@@ -237,22 +248,10 @@ export default function Home() {
     scrollMessageToTop(id);
   }, [messages, scrollMessageToTop]);
 
-  const handleSend = useCallback(
-    (text: string) => {
+  const queueAssistantResponse = useCallback(
+    (response: CaseyResponse) => {
       clearLoadingDelayTimer();
-      const userMessageId = nextMessageId("user");
-      const userMessage: Message = {
-        id: userMessageId,
-        role: "user",
-        content: text,
-      };
-
-      scrollTargetRef.current = userMessageId;
-      setMessages((prev) => [...prev, userMessage]);
-      setSuggestions([]);
       setIsResponding(true);
-
-      const response = getCaseyResponse(text, session);
       const loadingSegments: TypewriterSegment[] =
         (response.thinkingSteps ?? []).length > 0
           ? (response.thinkingSteps ?? []).map((step, index) => ({
@@ -285,14 +284,70 @@ export default function Home() {
         onQueueComplete: scheduleStream,
       });
     },
-    [clearLoadingDelayTimer, nextMessageId, session, streamAssistantMessage, typewriter]
+    [clearLoadingDelayTimer, streamAssistantMessage, typewriter]
   );
 
-  const handleRowSelect = useCallback((messageId: string) => {
-    if (isBusy) return;
-    flashSelectedMessage(messageId);
-    scrollMessageToTop(messageId);
-  }, [isBusy, flashSelectedMessage, scrollMessageToTop]);
+  const handleCreditWizardBack = useCallback(() => {
+    setSession((s) => {
+      if (s.stage === "credit_ssn") return { ...s, stage: "credit_intro" };
+      if (s.stage === "credit_address") return { ...s, stage: "credit_ssn" };
+      if (s.stage === "credit_review") return { ...s, stage: "credit_address" };
+      return s;
+    });
+  }, []);
+
+  const handleExitCreditWizard = useCallback(() => {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Leave the credit check? You can continue later from the chat.")
+    ) {
+      return;
+    }
+    setSession((s) => ({ ...s, stage: "assets_results" }));
+  }, []);
+
+  const handleCreditWizardComplete = useCallback(() => {
+    const merged: HomebuyingSession = { ...session, creditForm: creditDraft, stage: "credit_authorization" };
+    setSession(merged);
+    queueAssistantResponse(getCreditThreadAfterWizard(merged));
+  }, [session, creditDraft, queueAssistantResponse]);
+
+  const handleSend = useCallback(
+    (text: string) => {
+      clearLoadingDelayTimer();
+      const userMessageId = nextMessageId("user");
+      const userMessage: Message = {
+        id: userMessageId,
+        role: "user",
+        content: text,
+      };
+
+      scrollTargetRef.current = userMessageId;
+      setMessages((prev) => [...prev, userMessage]);
+      setSuggestions([]);
+
+      const response = getCaseyResponse(text, session);
+      queueAssistantResponse(response);
+    },
+    [clearLoadingDelayTimer, nextMessageId, queueAssistantResponse, session]
+  );
+
+  const handleCreditSuccessContinue = useCallback(() => {
+    setCreditSuccessOpen(false);
+    handleSend("Soft credit check authorized");
+  }, [handleSend]);
+
+  const handleRowSelect = useCallback(
+    (messageId: string) => {
+      if (isBusy) return;
+      const row = messages.find((m) => m.id === messageId);
+      if (row?.role === "user") {
+        flashSelectedMessage(messageId);
+      }
+      scrollMessageToTop(messageId);
+    },
+    [isBusy, flashSelectedMessage, messages, scrollMessageToTop]
+  );
 
   const shouldIgnoreRowSelection = (target: HTMLElement | null) => {
     if (!target) return true;
@@ -324,19 +379,34 @@ export default function Home() {
 
   const showWelcome = messages.length === 0;
 
+  const showCreditWizard =
+    session.stage === "credit_intro" ||
+    session.stage === "credit_ssn" ||
+    session.stage === "credit_address" ||
+    session.stage === "credit_review";
+
+  const creditWizardStage =
+    session.stage === "credit_intro" ||
+    session.stage === "credit_ssn" ||
+    session.stage === "credit_address" ||
+    session.stage === "credit_review"
+      ? session.stage
+      : "credit_intro";
+
   return (
     <div className="h-dvh w-full overflow-hidden" style={{ backgroundColor: CHAT_SURFACE }}>
       <div
         className="relative flex h-full w-full flex-col overflow-hidden"
         style={{ backgroundColor: CHAT_SURFACE }}
+        aria-hidden={creditModalOpen || creditSuccessOpen || showCreditWizard ? true : undefined}
       >
-        <div className="mx-auto w-full max-w-[600px]">
+        <div className="chat-shell">
           <ChatHeader onBack={resetToWelcome} />
         </div>
         <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           <div
             ref={scrollRef}
-            className="mx-auto flex min-h-0 w-full max-w-[600px] flex-1 flex-col overflow-y-auto overscroll-contain"
+            className="chat-shell flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
             onPointerDownCapture={(event) => {
               pointerStartRef.current = { x: event.clientX, y: event.clientY };
             }}
@@ -379,9 +449,11 @@ export default function Home() {
                           event.preventDefault();
                           handleRowSelect(msg.id);
                         }}
-                        className={`selectable-chat-row ${
-                          selectedMessageId === msg.id ? "chat-row-selected" : ""
-                        } ${msg.isStreaming ? "message-stream-enter" : "opacity-0 animate-fade-in"}`}
+                        className={`${
+                          msg.role === "assistant" ? "chat-output-row" : "selectable-chat-row"
+                        } ${selectedMessageId === msg.id ? "chat-row-selected" : ""} ${
+                          msg.isStreaming ? "message-stream-enter" : "opacity-0 animate-fade-in"
+                        }`}
                         style={msg.isStreaming ? undefined : { animationDelay: "50ms" }}
                       >
                         <ChatMessage
@@ -391,6 +463,7 @@ export default function Home() {
                           isStreaming={msg.isStreaming}
                           blocks={msg.blocks}
                           onAction={handleSuggestionClick}
+                          onOpenCreditAuthorize={() => setCreditModalOpen(true)}
                         />
                         {msg.role === "assistant" &&
                           !msg.isStreaming &&
@@ -416,21 +489,46 @@ export default function Home() {
         </main>
         {/* Pinned footer: not inside scroll region; stays at bottom of the shell */}
         <footer className="relative z-20 shrink-0 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
-          <div className="mx-auto w-full max-w-[600px]">
+          <div className="chat-shell">
             <ChatInputField
               onSend={handleSend}
-              disabled={isBusy}
+              disabled={isBusy || showCreditWizard || creditModalOpen || creditSuccessOpen}
               placeholder={inputMode === "property_address" ? ADDRESS_INPUT_PLACEHOLDER : DEFAULT_INPUT_PLACEHOLDER}
             />
-            <p className="px-6 pb-0 pt-0 text-center text-[11px] leading-relaxed text-[#002855b3]">
-              Casey can make mistakes{" "}
-              <a href="#" className="text-[#002855] underline underline-offset-2">
-                as per our disclosures.
-              </a>
+            <p
+              className="max-w-prose px-6 pb-0 pt-0 text-center text-[11px] leading-relaxed"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Casey can make mistakes <DisclosureLinkButton>as per our disclosures.</DisclosureLinkButton>
             </p>
           </div>
         </footer>
       </div>
+
+      {showCreditWizard && (
+        <CreditCheckWizard
+          stage={creditWizardStage}
+          draft={creditDraft}
+          onDraftChange={setCreditDraft}
+          onContinueIntro={() => setSession((s) => ({ ...s, stage: "credit_ssn" }))}
+          onContinueSsn={() => setSession((s) => ({ ...s, stage: "credit_address" }))}
+          onContinueAddress={() => setSession((s) => ({ ...s, stage: "credit_review" }))}
+          onSubmitReview={handleCreditWizardComplete}
+          onBack={handleCreditWizardBack}
+          onExitToChat={handleExitCreditWizard}
+        />
+      )}
+
+      <CreditAuthorizeModal
+        open={creditModalOpen}
+        onClose={() => setCreditModalOpen(false)}
+        onSubmit={() => {
+          setCreditModalOpen(false);
+          setCreditSuccessOpen(true);
+        }}
+      />
+
+      <CreditSuccessSheet open={creditSuccessOpen} onContinue={handleCreditSuccessContinue} />
     </div>
   );
 }

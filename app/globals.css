@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/**
+ * Casey UI tokens
+ * Type scale: display (welcome ~26px) | title (wizard/header) | body (16/20 assistant) | caption (11–13px meta)
+ */
 :root {
   --background: #fafbff;
   --foreground: #002855;
@@ -7,8 +11,10 @@
   --primary-navy: #002855;
   --text-primary: #002855;
   --text-secondary: rgba(0, 40, 85, 0.7);
+  /** Footer / legal — slightly darker than legacy #002855b3 for contrast on #FAFBFF */
+  --text-muted: rgba(0, 40, 85, 0.68);
   --user-bubble: #ffffff;
-  --success-green: #002855;
+  --success-green: #28a745;
   --warning-amber: #002855;
   --surface: #fafbff;
   --surface-soft: #ffffff;
@@ -40,6 +46,52 @@ body {
   min-height: 100dvh;
   touch-action: manipulation;
   -webkit-font-smoothing: antialiased;
+}
+
+/** Typography scale (display / title / body / caption) — use with text-* utilities where aligned */
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in,
+  .animate-loading-fade-in,
+  .animate-loading-line,
+  .message-stream-enter,
+  .animate-compose-pulse,
+  .animate-scale-in {
+    animation: none !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  .selectable-chat-row,
+  .chat-output-row {
+    transition: none;
+  }
+
+  .overlay-panel-enter {
+    animation: none !important;
+  }
+}
+
+/** Centered chat column (single source for max width) */
+.chat-shell {
+  margin-left: auto;
+  margin-right: auto;
+  width: 100%;
+  max-width: 600px;
+}
+
+@keyframes overlayPanelIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.overlay-panel-enter {
+  animation: overlayPanelIn 0.18s ease-out both;
 }
 
 @keyframes fadeIn {
@@ -141,6 +193,18 @@ body {
 }
 
 .selectable-chat-row:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+/** Assistant/output rows: same affordances as selectable rows, no press flash */
+.chat-output-row {
+  cursor: pointer;
+  border-radius: 14px;
+  transition: box-shadow 0.18s ease-out, background-color 0.18s ease-out;
+}
+
+.chat-output-row:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 2px;
 }

@@ -52,9 +52,11 @@ export default function ChatInputField({
         <div className="flex shrink-0 items-center gap-0.5 pr-0.5">
           <button
             type="button"
-            className="flex h-10 w-10 items-center justify-center rounded-full text-[#00285599] transition-colors hover:bg-[#00285514] hover:text-[#002855] active:scale-95 disabled:pointer-events-none disabled:opacity-40"
+            tabIndex={-1}
+            className={`flex h-10 w-10 shrink-0 cursor-not-allowed items-center justify-center rounded-full text-[#00285599] opacity-50 ${disabled ? "pointer-events-none" : ""}`}
             aria-label="Voice input"
-            disabled={disabled}
+            aria-disabled
+            title="Coming soon"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
               <path

@@ -8,6 +8,7 @@ import InlineActionPill from "./InlineActionPill";
 import AssistantStatusLine from "./AssistantStatusLine";
 import CreditAuthorizationCard from "./CreditAuthorizationCard";
 import ApplicationSummaryCard from "./ApplicationSummaryCard";
+import CreditCheckStatusCard from "./credit/CreditCheckStatusCard";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -17,6 +18,7 @@ interface ChatMessageProps {
   timestamp?: string;
   blocks?: AssistantBlock[];
   onAction?: (value: string) => void;
+  onOpenCreditAuthorize?: () => void;
 }
 
 export default function ChatMessage({
@@ -27,6 +29,7 @@ export default function ChatMessage({
   timestamp,
   blocks,
   onAction,
+  onOpenCreditAuthorize,
 }: ChatMessageProps) {
   if (role === "user") {
     return (
@@ -46,7 +49,12 @@ export default function ChatMessage({
   }
 
   return (
-    <div className="min-w-0">
+    <div
+      className="min-w-0"
+      aria-live="polite"
+      aria-busy={isStreaming ? true : undefined}
+      aria-atomic="false"
+    >
       {timestamp && (
         <p className="mb-1 text-[11px] text-[#00285599]">{timestamp}</p>
       )}
@@ -86,8 +94,12 @@ export default function ChatMessage({
                   key={`credit-auth-${index}`}
                   data={block.data}
                   onToggle={onAction}
+                  onOpenAuthorize={onOpenCreditAuthorize}
                 />
               );
+            }
+            if (block.type === "credit_status") {
+              return <CreditCheckStatusCard key={`credit-status-${index}`} data={block.data} />;
             }
             if (block.type === "application_summary") {
               return <ApplicationSummaryCard key={`summary-${index}`} data={block.data} />;

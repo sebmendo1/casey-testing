@@ -43,9 +43,22 @@ export type CaseyStage =
   | "down_payment_question"
   | "assets_review_question"
   | "assets_results"
+  | "credit_intro"
+  | "credit_ssn"
+  | "credit_address"
+  | "credit_review"
   | "credit_authorization"
   | "application_review"
   | "confirmation";
+
+export interface CreditFormData {
+  ssn: string;
+  street: string;
+  apt: string;
+  city: string;
+  state: string;
+  zip: string;
+}
 
 export interface HomebuyingSession {
   stage: CaseyStage;
@@ -56,6 +69,7 @@ export interface HomebuyingSession {
   downPaymentDecision?: string;
   assetsReviewMode?: string;
   creditAuthorized?: boolean;
+  creditForm?: CreditFormData;
 }
 
 export interface PropertySummaryData {
@@ -87,8 +101,16 @@ export interface InlineCtaData {
 export interface CreditAuthorizationData {
   checked: boolean;
   label: string;
-  detailsLinkText: string;
+  detailsLinkText?: string;
   actionLabel: string;
+  /** Inline card (chat) opens full authorization modal */
+  variant?: "inline" | "default";
+}
+
+export interface CreditStatusData {
+  title: string;
+  statusLabel: string;
+  subtext: string;
 }
 
 export interface ReviewField {
@@ -107,6 +129,7 @@ export type AssistantBlock =
   | { type: "account_group"; data: AccountGroupData }
   | { type: "inline_cta"; data: InlineCtaData }
   | { type: "credit_authorization"; data: CreditAuthorizationData }
+  | { type: "credit_status"; data: CreditStatusData }
   | { type: "application_summary"; data: ApplicationSummaryData };
 
 export interface CaseyResponse {
