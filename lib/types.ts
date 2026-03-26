@@ -40,6 +40,8 @@ export type CaseyStage =
   | "affordability_debts"
   | "affordability_down_payment"
   | "affordability_result"
+  | "property_search"
+  | "property_search_results"
   | "journey_question"
   | "timeline_question"
   | "agent_question"
@@ -74,6 +76,8 @@ export interface HomebuyingSession {
   affordabilityAnnualIncome?: number;
   affordabilityMonthlyDebts?: number;
   affordabilityDownPayment?: AffordabilityDownPayment;
+  propertySearchCity?: string;
+  propertySearchState?: string;
   journeyStage?: string;
   buyTimeline?: string;
   agentStatus?: string;
@@ -84,16 +88,35 @@ export interface HomebuyingSession {
   creditForm?: CreditFormData;
 }
 
-export interface PropertySummaryData {
-  statusTitle: string;
-  heading: string;
-  imageAlt: string;
+/** One listing row for property search tiles (chat + detail link). */
+export interface PropertyTileData {
+  rentCastId: string;
   price: string;
   address: string;
   beds: number;
   baths: number;
   sqft: number;
+  imageUrl?: string;
+  imageUrls?: string[];
+  yearBuilt?: number;
+  lotSizeSqft?: number;
+  propertyType?: string;
+  daysOnMarket?: number;
+  hoaFeeMonthly?: number;
+  mlsNumber?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
+export interface PropertySummaryData {
+  statusTitle: string;
+  heading: string;
+  imageAlt: string;
   commentary?: string;
+  /** `single`: one hero tile; `list`: compact rows (default when multiple items). */
+  displayMode?: "single" | "list";
+  /** Listings to render; use one item for a single tile. */
+  items: PropertyTileData[];
 }
 
 export interface AccountRow {

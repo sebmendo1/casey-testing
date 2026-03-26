@@ -22,32 +22,58 @@ const NUMBERS_LOADING = thinkingStepsFromStrings(["Running the numbers..."]);
 const ACCOUNTS_LOADING = thinkingStepsFromStrings(["Reviewing your Casey accounts..."]);
 const SOFT_CREDIT_LOADING = thinkingStepsFromStrings(["Preparing soft credit authorization..."]);
 
-const TIMELINE_OPTIONS = [
-  "As soon as possible",
-  "In the next few months",
-  "Within the next year",
-  "Not sure yet",
-];
-
-const AGENT_OPTIONS = [
-  "Yes, I have a real estate agent",
-  "No, but I’m interested in one",
-  "Not interested",
-];
-
 function fallback(session: HomebuyingSession): CaseyResponse {
-  return {
-    content: "Please choose one of the options above, or share more details and I can guide you.",
-    session,
-    inputMode: session.stage === "address_prompt" ? "property_address" : "default",
-  };
+  switch (session.stage) {
+    case "journey_question":
+      return {
+        content:
+          "That\u2019s a great question and I\u2019m happy to help with that along the way. To get us started though, I\u2019d love to know where you stand right now \u2014 are you still exploring the idea of buying, actively looking at homes, or do you already have a property under contract? This helps me figure out the best path forward for you.",
+        session,
+      };
+    case "timeline_question":
+      return {
+        content:
+          "No worries, timelines can be flexible. Just to give me a rough sense \u2014 are we talking weeks, a few months, or more like within the next year? Even a ballpark helps me make sure we\u2019re looking at the right programs for you.",
+        session,
+      };
+    case "agent_question":
+      return {
+        content:
+          "Totally fine if you haven\u2019t decided yet. For now, just let me know \u2014 do you have a real estate agent already, or would you like me to connect you with one through Casey Agent Express? Either way works for moving forward.",
+        session,
+      };
+    case "address_prompt":
+      return {
+        content:
+          "I\u2019d love to look that up, but I need just a bit more to go on. Could you share a full address, a ZIP code, or at least a city and state? For example, something like \u2018123 Main St, Austin, TX\u2019 or just \u201878701\u2019 works great.",
+        session,
+        inputMode: "property_address",
+      };
+    case "down_payment_question":
+      return {
+        content:
+          "I hear you \u2014 down payments can feel like a big number. You don\u2019t have to go with 20% though; many borrowers put down less. Just let me know a dollar amount or percentage that feels realistic for you, and I\u2019ll recalculate everything.",
+        session,
+      };
+    case "assets_review_question":
+      return {
+        content:
+          "No problem at all. For this step, I check your Casey Bank accounts to confirm your available funds \u2014 things like checking, savings, and any investment accounts. If you\u2019d rather input your asset information yourself, just let me know and I\u2019ll set that up instead. Which would you prefer?",
+        session,
+      };
+    default:
+      return {
+        content:
+          "I want to make sure I help you the right way. Could you share a bit more about what you\u2019re looking for so I can guide you to the next step?",
+        session,
+      };
+  }
 }
 
 function nextBuyTimeline(session: HomebuyingSession, userMessage: string): CaseyResponse {
   return {
     content:
-      "Are you already working with a real estate agent?\n\nIf you don't have one, Casey Agent Express is an excellent solution for working with a real estate professional.",
-    suggestions: AGENT_OPTIONS,
+      "Good to know you\u2019re aiming for " + userMessage.trim() + ". Are you currently working with a real estate agent, or would you like to go solo for now? If you don\u2019t have one yet, Casey Agent Express can pair you with a professional at no extra cost.",
     session: { ...session, stage: "agent_question", buyTimeline: userMessage },
     thinkingSteps: START_LOADING,
   };
@@ -56,7 +82,7 @@ function nextBuyTimeline(session: HomebuyingSession, userMessage: string): Casey
 function moveToAddressPrompt(session: HomebuyingSession, userMessage: string): CaseyResponse {
   return {
     content:
-      "Perfect, now it's time to search for your future home\n\nType the address bellow and we'll confirm the property's information. If you don't have the exact property, you can share the zip code or city, and we'll draw an estimate.\n\nEx: 1234 Sesame St, New York, NY, 12345",
+      "Perfect, that\u2019s helpful context. Now let\u2019s find your future home \u2014 go ahead and share the property address, a ZIP code, or even just the city and I\u2019ll pull up what I can. If you don\u2019t have a specific property yet, a neighborhood or ZIP still gives us a solid estimate.",
     session: { ...session, stage: "address_prompt", agentStatus: userMessage },
     inputMode: "property_address",
   };
@@ -65,21 +91,26 @@ function moveToAddressPrompt(session: HomebuyingSession, userMessage: string): C
 function moveToOfferRecommendation(session: HomebuyingSession, propertyAddress: string): CaseyResponse {
   return {
     content:
-      "The asking price for this property is $420,000. According to Casey's listing data, this appears to be a fair asking price.\n\nWe recommend offering a 20% down payment of about $84,000 to get the best rates. Would this work?",
+      "Here\u2019s what we found for your property. Based on the listing data, a 20% down payment of about $84,000 would get you the best rates \u2014 does that amount work for you, or would you prefer a different figure? Just share whatever feels comfortable and I\u2019ll adjust the numbers.",
     session: { ...session, stage: "down_payment_question", propertyAddress },
-    suggestions: ["Yes, a 20% down payment works", "Offer another amount"],
     blocks: [
       {
         type: "property_summary",
         data: {
           statusTitle: "Property search complete",
-          heading: "Here's what we know about your future home",
+          heading: "Here\u2019s what we know about your future home",
           imageAlt: "Property photo",
-          price: "$420,000",
-          address: "12509 Coral Dr, Frisco TX, 75036",
-          beds: 4,
-          baths: 2,
-          sqft: 2097,
+          displayMode: "single",
+          items: [
+            {
+              rentCastId: "mock-coral-dr-frisco",
+              price: "$420,000",
+              address: "12509 Coral Dr, Frisco TX, 75036",
+              beds: 4,
+              baths: 2,
+              sqft: 2097,
+            },
+          ],
         },
       },
     ],
@@ -90,18 +121,17 @@ function moveToOfferRecommendation(session: HomebuyingSession, propertyAddress: 
 function moveToAssetsQuestion(session: HomebuyingSession, downPaymentDecision: string): CaseyResponse {
   return {
     content:
-      "Great, now let's review your affordability with your Casey accounts.\n\nIf you wish, I can quickly review your Casey assets through both Checking, Savings, and Casey Wealth Management to estimate if you can afford this home. Would you like me to do that?",
-    suggestions: ["Yes, review my Casey assets", "I prefer to add them manually"],
+      "Nice, that down payment works well with your profile. Next, I\u2019d like to pull in your Casey bank accounts \u2014 Checking, Savings, and Wealth Management \u2014 to verify you have the funds for this purchase. Just say yes and I\u2019ll do a quick review, or let me know if you\u2019d prefer to add accounts manually.",
     session: { ...session, stage: "assets_review_question", downPaymentDecision },
     thinkingSteps: NUMBERS_LOADING,
   };
 }
 
-function moveToAssetsResult(session: HomebuyingSession, useAutoReview: boolean): CaseyResponse {
+export function moveToAssetsResult(session: HomebuyingSession, useAutoReview: boolean): CaseyResponse {
   return {
     content: useAutoReview
-      ? "Here are your accounts we found\n\nYou can choose which ones you'd like to include for your qualification letter."
-      : "Once you select your assets, you can continue with the application",
+      ? "Here are the accounts I found linked to your Casey profile. You can choose which ones you\u2019d like to include for your qualification letter."
+      : "No problem \u2014 once you add your asset information, you can continue with the application.",
     session: {
       ...session,
       stage: "assets_results",
@@ -148,7 +178,7 @@ function moveToAssetsResult(session: HomebuyingSession, useAutoReview: boolean):
   };
 }
 
-function buildApplicationSummary(session: HomebuyingSession) {
+export function buildApplicationSummary(session: HomebuyingSession) {
   const rows = [
     { label: "Journey stage", value: session.journeyStage ?? "Not provided" },
     { label: "Buy timeline", value: session.buyTimeline ?? "Not provided" },
@@ -193,7 +223,7 @@ function buildAffordabilityResultResponse(session: HomebuyingSession): CaseyResp
   const card = formatAffordabilityResultCard(compute);
   return {
     content:
-      "Here's a quick estimate based on what you shared. Principal and interest only—taxes, insurance, HOA, and PMI are not included.\n\nWhen you're ready, say if you'd like to apply for a mortgage, adjust your numbers and rerun the estimate, or start over.",
+      "Here\u2019s a quick estimate based on what you shared. Principal and interest only \u2014 taxes, insurance, HOA, and PMI are not included.\n\nWhen you\u2019re ready, let me know if you\u2019d like to apply for a mortgage, adjust your numbers and rerun the estimate, or start over.",
     session: { ...session, stage: "affordability_result" },
     blocks: [
       { type: "status_line", data: { text: "Estimate ready" } },
@@ -204,11 +234,10 @@ function buildAffordabilityResultResponse(session: HomebuyingSession): CaseyResp
   };
 }
 
-/** Shown in chat after the credit wizard (SSN / address / review) is submitted. */
 export function getCreditThreadAfterWizard(session: HomebuyingSession): CaseyResponse {
   return {
     content:
-      "We have all your information ready.\n\nNow what we need is to run a soft credit check to verify your eligibility. Just remember: this operation will not affect your credit score in anyway.",
+      "We have all your information ready.\n\nNow what we need is to run a soft credit check to verify your eligibility. Just remember: this will not affect your credit score in any way.",
     blocks: [
       { type: "status_line", data: { text: "One last step to take" } },
       {
@@ -237,8 +266,7 @@ export function getCaseyResponse(
     if (includesAny(normalized, ["apply for a mortgage", "apply for a home loan"])) {
       return {
         content:
-          "Great, let's get you started in your home journey with your mortgage application\n\nI'll guide you through the steps and save your progress along the way so you can pick up where you left off. Remember that I can always answer any questions you may have along the way.\n\nBefore we get started, I have a few questions around your home buying needs, timeline, and similar\n\nAs of today, where are you in your home buying journey?",
-        suggestions: ["I'm still researching", "Starting to make offers", "Signed a purchase contract"],
+          "Great, let\u2019s get your home loan application started. Where are you right now in your home buying journey \u2014 still researching, actively making offers, or have you already signed a purchase contract? No wrong answers here, it just helps me tailor the next steps for you.",
         session: { stage: "journey_question" },
         thinkingSteps: START_LOADING,
       };
@@ -247,7 +275,7 @@ export function getCaseyResponse(
     if (includesAny(normalized, AFFORDABILITY_QUALIFY_PHRASES)) {
       return {
         content:
-          "I'll estimate how much you may be able to borrow from income, monthly debts, and your down payment. This is only a rough guide—not a loan offer or financial advice.\n\nWhat is your annual gross income before taxes?",
+          "I\u2019ll estimate how much you may be able to borrow based on your income, monthly debts, and down payment. This is only a rough guide \u2014 not a loan offer or financial advice.\n\nWhat is your annual gross income before taxes?",
         suggestions: [],
         session: { stage: "affordability_income" },
         thinkingSteps: NUMBERS_LOADING,
@@ -256,7 +284,7 @@ export function getCaseyResponse(
 
     return {
       content:
-        "Select a launch option to continue: Apply for a home loan, See how much I can qualify for, or Search for homes in my area.",
+        "I\u2019m here to help you on your home buying journey. You can apply for a home loan, see how much you can qualify for, or search for homes in your area \u2014 just let me know what sounds good.",
       session,
     };
   }
@@ -265,14 +293,14 @@ export function getCaseyResponse(
     const p = parseMoneyOrPercent(userMessage);
     if (!p.ok || p.isPercent) {
       return {
-        content: "Please enter your annual gross income as a dollar amount (e.g. 85000 or $85,000).",
+        content: "I appreciate you sharing that. For this step I need your annual gross income as a dollar amount \u2014 for example, 85000 or $85,000. What\u2019s your yearly income before taxes?",
         session,
         suggestions: [],
       };
     }
     return {
       content:
-        "What are your total minimum monthly payments on non-housing debts—car loans, credit cards, student loans, and similar? (Not rent or utilities.) Enter 0 if none.",
+        "Got it, thanks for sharing that. What are your total minimum monthly payments on non-housing debts \u2014 things like car loans, credit cards, student loans, and similar? If you don\u2019t have any, just say 0.",
       suggestions: [],
       session: { ...session, affordabilityAnnualIncome: p.value, stage: "affordability_debts" },
       thinkingSteps: NUMBERS_LOADING,
@@ -283,14 +311,14 @@ export function getCaseyResponse(
     const p = parseMoneyOrPercent(userMessage);
     if (!p.ok || p.isPercent) {
       return {
-        content: "Please enter a monthly dollar amount (e.g. 0, 350, or $500). Use 0 if you have no such debts.",
+        content: "No worries \u2014 I just need a monthly dollar amount for your non-housing debts. Something like 0, 350, or $500 works. If you don\u2019t have any monthly debts like that, 0 is perfectly fine.",
         session,
         suggestions: [],
       };
     }
     return {
       content:
-        "How much do you plan to put down? Enter a percentage of the purchase price (e.g. 20%) or a dollar amount (e.g. $40,000).",
+        "Thanks, that helps me get a clearer picture. How much do you plan to put toward a down payment? You can share a percentage of the purchase price like 20%, or a dollar amount like $40,000.",
       suggestions: [],
       session: { ...session, affordabilityMonthlyDebts: p.value, stage: "affordability_down_payment" },
       thinkingSteps: NUMBERS_LOADING,
@@ -301,7 +329,7 @@ export function getCaseyResponse(
     const p = parseMoneyOrPercent(userMessage);
     if (!p.ok) {
       return {
-        content: "Please enter a percent (e.g. 20%) or a dollar amount (e.g. $40,000).",
+        content: "I just need a number for the down payment \u2014 either a percentage like 20% or a dollar amount like $40,000. Whatever you\u2019re comfortable with works.",
         session,
         suggestions: [],
       };
@@ -320,15 +348,14 @@ export function getCaseyResponse(
     if (includesAny(normalized, ["apply for a mortgage", "apply for a home loan"])) {
       return {
         content:
-          "Great—let's build on your estimate with a full application.\n\nAs of today, where are you in your home buying journey?",
-        suggestions: ["I'm still researching", "Starting to make offers", "Signed a purchase contract"],
+          "Great \u2014 let\u2019s build on your estimate with a full application. Where are you right now in your home buying journey \u2014 still researching, actively making offers, or have you already signed a purchase contract? This helps me figure out the best next steps.",
         session: { stage: "journey_question" },
         thinkingSteps: START_LOADING,
       };
     }
     if (includesAny(normalized, ["adjust my numbers", "adjust"])) {
       return {
-        content: "Let's update your numbers. What is your annual gross income before taxes?",
+        content: "Let\u2019s update your numbers. What is your annual gross income before taxes?",
         suggestions: [],
         session: { stage: "affordability_income" },
         thinkingSteps: NUMBERS_LOADING,
@@ -346,8 +373,8 @@ export function getCaseyResponse(
 
   if (session.stage === "journey_question") {
     return {
-      content: "When do you want to buy a house?",
-      suggestions: TIMELINE_OPTIONS,
+      content:
+        "Sounds like you\u2019re " + userMessage.trim().toLowerCase() + " \u2014 that\u2019s a great place to be. What\u2019s your timeline for purchasing \u2014 are you looking to move quickly, in the next few months, or sometime within the year? Knowing your pace helps me find the right loan options for your situation.",
       session: { ...session, stage: "timeline_question", journeyStage: userMessage },
       thinkingSteps: START_LOADING,
     };
@@ -358,7 +385,7 @@ export function getCaseyResponse(
   }
 
   if (session.stage === "agent_question") {
-    if (includesAny(normalized, ["yes, i have", "yes", "interested", "not interested", "real estate agent"])) {
+    if (normalized.length > 1) {
       return moveToAddressPrompt(session, userMessage);
     }
     return fallback(session);
@@ -366,25 +393,14 @@ export function getCaseyResponse(
 
   if (session.stage === "address_prompt") {
     if (userMessage.trim().length < 5) {
-      return {
-        content: "Please share a complete address, ZIP code, or city so I can run the search.",
-        session,
-        inputMode: "property_address",
-      };
+      return fallback(session);
     }
     return moveToOfferRecommendation(session, userMessage.trim());
   }
 
   if (session.stage === "down_payment_question") {
-    if (includesAny(normalized, ["yes", "20% down payment"])) {
+    if (includesAny(normalized, ["yes", "20%", "works", "sounds good", "that works"])) {
       return moveToAssetsQuestion(session, userMessage);
-    }
-
-    if (includesAny(normalized, ["offer another amount", "another amount"])) {
-      return {
-        content: "Share the down payment amount you prefer, and I'll rerun the estimate.",
-        session,
-      };
     }
 
     if (/\$?\d+/.test(normalized)) {
@@ -395,10 +411,10 @@ export function getCaseyResponse(
   }
 
   if (session.stage === "assets_review_question") {
-    if (includesAny(normalized, ["yes, review", "review my casey", "review"])) {
+    if (includesAny(normalized, ["yes", "review", "sure", "go ahead", "do it"])) {
       return moveToAssetsResult(session, true);
     }
-    if (includesAny(normalized, ["manually", "prefer to add"])) {
+    if (includesAny(normalized, ["manually", "prefer to add", "myself", "manual"])) {
       return moveToAssetsResult(session, false);
     }
     return fallback(session);
@@ -429,7 +445,7 @@ export function getCaseyResponse(
     session.stage === "credit_review"
   ) {
     return {
-      content: "Use the credit check screens to continue — you can also tap Back if you need to change an answer.",
+      content: "Use the credit check screens to continue \u2014 you can also tap Back if you need to change an answer.",
       session,
     };
   }
@@ -441,7 +457,7 @@ export function getCaseyResponse(
     ) {
       return {
         content:
-          "Your soft credit check was successful! You're eligible for the loan.\n\nWhat would you like to do next?",
+          "Your soft credit check was successful! You\u2019re eligible for the loan.\n\nWhat would you like to do next?",
         blocks: [
           { type: "status_line", data: { text: "Summarizing your application" } },
           {
@@ -464,7 +480,7 @@ export function getCaseyResponse(
             data: { label: "Confirm application" },
           },
         ],
-        suggestions: ["Review loan terms", "Talk to an agent"],
+        suggestions: [],
         session: { ...session, stage: "application_review", creditAuthorized: true },
         thinkingSteps: thinkingStepsFromStrings(["Checking your credit... This will only take a moment."]),
       };
@@ -483,14 +499,14 @@ export function getCaseyResponse(
             data: { text: "Application confirmed" },
           },
         ],
-        suggestions: ["Back to start"],
+        suggestions: [],
         session: { ...session, stage: "confirmation" },
       };
     }
     if (includesAny(normalized, ["review loan", "review loan terms"])) {
       return {
         content:
-          "Here's your application summary. Tap Confirm application when you're ready to submit your loan application.",
+          "Here\u2019s your application summary. Tap Confirm application when you\u2019re ready to submit your loan application.",
         blocks: [
           {
             type: "application_summary",
@@ -510,7 +526,7 @@ export function getCaseyResponse(
     if (includesAny(normalized, ["talk to an agent"])) {
       return {
         content:
-          "We'll connect you with a mortgage specialist. You can still confirm your application below whenever you're ready.",
+          "We\u2019ll connect you with a mortgage specialist. You can still confirm your application below whenever you\u2019re ready.",
         blocks: [
           {
             type: "inline_cta",

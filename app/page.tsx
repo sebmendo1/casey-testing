@@ -7,14 +7,14 @@ import ChatMessage from "@/components/ChatMessage";
 import ChatInputField from "@/components/ChatInputField";
 import AssistantStatusLine from "@/components/AssistantStatusLine";
 import SuggestionPills from "@/components/SuggestionPills";
-import { getCaseyResponse, getCreditThreadAfterWizard } from "@/lib/conversations";
-import type { Message, CaseyResponse, CaseyInputMode, HomebuyingSession, CreditFormData } from "@/lib/types";
+import type { Message, CaseyInputMode, HomebuyingSession, CreditFormData, AssistantBlock } from "@/lib/types";
 import CreditCheckWizard from "@/components/credit/CreditCheckWizard";
 import CreditAuthorizeModal from "@/components/credit/CreditAuthorizeModal";
 import CreditSuccessSheet from "@/components/credit/CreditSuccessSheet";
 import DisclosureLinkButton from "@/components/DisclosureLinkButton";
 import { emptyCreditForm } from "@/lib/creditUtils";
-import { useTypewriterQueue, type TypewriterSegment } from "@/hooks/useTypewriterQueue";
+import { useTypewriterQueue } from "@/hooks/useTypewriterQueue";
+import { getCaseyResponse } from "@/lib/conversations";
 
 const WELCOME_SUGGESTIONS = [
   "Apply for a mortgage",
@@ -24,9 +24,6 @@ const WELCOME_SUGGESTIONS = [
 
 const DEFAULT_INPUT_PLACEHOLDER = "How can I help you today?";
 const ADDRESS_INPUT_PLACEHOLDER = "Tell us your property address";
-const MIN_LOADING_MS = 2000;
-const MAX_LOADING_MS = 3000;
-const GENERIC_LOADING_TEXT = "Thinking through your request...";
 const TOP_ANCHOR_OFFSET_PX = 6;
 
 /** Brand canvas */
@@ -51,134 +48,21 @@ export default function Home() {
   const [creditModalOpen, setCreditModalOpen] = useState(false);
   const [creditSuccessOpen, setCreditSuccessOpen] = useState(false);
 
-  const typewriter = useTypewriterQueue({
-    baseDelayMs: 15,
-    punctuationDelayMs: 90,
-    sentenceEndDelayMs: 140,
-    jitterMs: 7,
-  });
+  const { runQueue: runTypewriterQueue, cancel: cancelTypewriter, isRunning: typewriterRunning } =
+    useTypewriterQueue({
+      baseDelayMs: 15,
+      punctuationDelayMs: 90,
+      sentenceEndDelayMs: 140,
+      jitterMs: 7,
+    });
 
-  const isBusy = isResponding || typewriter.isRunning;
+  const isBusy = isResponding || typewriterRunning;
 
   const nextMessageId = useCallback((prefix: "user" | "assistant") => {
     msgCounterRef.current += 1;
     return `${prefix}-${Date.now()}-${msgCounterRef.current}`;
   }, []);
 
-  const finalizeResponseMeta = useCallback((response: CaseyResponse) => {
-    setSuggestions(response.suggestions ?? []);
-    setSession(response.session);
-    setInputMode(response.inputMode ?? "default");
-    setIsResponding(false);
-  }, []);
-
-  const streamAssistantMessage = useCallback(
-    (response: CaseyResponse) => {
-      const fullContent = response.content ?? "";
-      const originalBlocks = response.blocks ?? [];
-      const hasText = fullContent.trim().length > 0;
-      const hasBlocks = originalBlocks.length > 0;
-      const hasStatusBlocks = originalBlocks.some((block) => block.type === "status_line");
-
-      if (!hasText && !hasBlocks) {
-        finalizeResponseMeta(response);
-        return;
-      }
-
-      const assistantMessageId = nextMessageId("assistant");
-      const initialBlocks = originalBlocks.map((block) =>
-        block.type === "status_line"
-          ? { ...block, data: { ...block.data, displayText: "" } }
-          : block
-      );
-      const shouldStream = hasStatusBlocks || hasText;
-
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: assistantMessageId,
-          role: "assistant",
-          content: fullContent,
-          displayContent: hasText ? "" : fullContent,
-          blocks: initialBlocks,
-          isStreaming: shouldStream,
-        },
-      ]);
-
-      if (!shouldStream) {
-        finalizeResponseMeta(response);
-        return;
-      }
-
-      const segments: TypewriterSegment[] = [];
-      originalBlocks.forEach((block, index) => {
-        if (block.type === "status_line") {
-          segments.push({ id: `status-${index}`, text: block.data.text });
-        }
-      });
-      if (hasText) {
-        segments.push({ id: "content", text: fullContent });
-      }
-
-      typewriter.runQueue(segments, {
-        onSegmentStart: (segment) => {
-          if (!segment.id.startsWith("status-")) return;
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (msg.id !== assistantMessageId) return msg;
-              const blockIdx = Number(segment.id.replace("status-", ""));
-              const updatedBlocks = (msg.blocks ?? []).map((block, i) =>
-                i === blockIdx && block.type === "status_line"
-                  ? { ...block, data: { ...block.data, displayText: "" } }
-                  : block
-              );
-              return { ...msg, blocks: updatedBlocks };
-            })
-          );
-        },
-        onSegmentUpdate: (segment, displayText) => {
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (msg.id !== assistantMessageId) return msg;
-              if (segment.id === "content") {
-                return { ...msg, displayContent: displayText };
-              }
-              if (segment.id.startsWith("status-")) {
-                const blockIdx = Number(segment.id.replace("status-", ""));
-                const updatedBlocks = (msg.blocks ?? []).map((block, i) =>
-                  i === blockIdx && block.type === "status_line"
-                    ? { ...block, data: { ...block.data, displayText } }
-                    : block
-                );
-                return { ...msg, blocks: updatedBlocks };
-              }
-              return msg;
-            })
-          );
-        },
-        onQueueComplete: () => {
-          setMessages((prev) =>
-            prev.map((msg) => {
-              if (msg.id !== assistantMessageId) return msg;
-              const finalizedBlocks = (msg.blocks ?? []).map((block) =>
-                block.type === "status_line"
-                  ? { ...block, data: { ...block.data, displayText: block.data.text } }
-                  : block
-              );
-              return {
-                ...msg,
-                isStreaming: false,
-                displayContent: undefined,
-                blocks: finalizedBlocks,
-              };
-            })
-          );
-          finalizeResponseMeta(response);
-        },
-      });
-    },
-    [finalizeResponseMeta, nextMessageId, typewriter]
-  );
 
   const clearLoadingDelayTimer = useCallback(() => {
     if (loadingDelayTimeoutRef.current !== null) {
@@ -220,7 +104,7 @@ export default function Home() {
 
   const resetToWelcome = useCallback(() => {
     clearLoadingDelayTimer();
-    typewriter.cancel();
+    cancelTypewriter();
     setMessages([]);
     setSession({ stage: "welcome" });
     setInputMode("default");
@@ -232,7 +116,7 @@ export default function Home() {
     setCreditModalOpen(false);
     setCreditSuccessOpen(false);
     setSuggestions(WELCOME_SUGGESTIONS);
-  }, [typewriter, clearLoadingDelayTimer]);
+  }, [cancelTypewriter, clearLoadingDelayTimer]);
 
   useEffect(() => {
     return () => {
@@ -248,44 +132,6 @@ export default function Home() {
     scrollMessageToTop(id);
   }, [messages, scrollMessageToTop]);
 
-  const queueAssistantResponse = useCallback(
-    (response: CaseyResponse) => {
-      clearLoadingDelayTimer();
-      setIsResponding(true);
-      const loadingSegments: TypewriterSegment[] =
-        (response.thinkingSteps ?? []).length > 0
-          ? (response.thinkingSteps ?? []).map((step, index) => ({
-              id: `loading-${index}`,
-              text: step.text,
-            }))
-          : [{ id: "loading-generic", text: GENERIC_LOADING_TEXT }];
-
-      const requiredLoadingMs =
-        MIN_LOADING_MS + Math.floor(Math.random() * (MAX_LOADING_MS - MIN_LOADING_MS + 1));
-      const loadingStartedAt = performance.now();
-
-      const scheduleStream = () => {
-        const elapsed = performance.now() - loadingStartedAt;
-        const remaining = Math.max(0, requiredLoadingMs - elapsed);
-        loadingDelayTimeoutRef.current = window.setTimeout(() => {
-          setActiveLoadingText(null);
-          streamAssistantMessage(response);
-          loadingDelayTimeoutRef.current = null;
-        }, remaining);
-      };
-
-      typewriter.runQueue(loadingSegments, {
-        onSegmentStart: () => {
-          setActiveLoadingText("");
-        },
-        onSegmentUpdate: (_segment, displayText) => {
-          setActiveLoadingText(displayText);
-        },
-        onQueueComplete: scheduleStream,
-      });
-    },
-    [clearLoadingDelayTimer, streamAssistantMessage, typewriter]
-  );
 
   const handleCreditWizardBack = useCallback(() => {
     setSession((s) => {
@@ -306,11 +152,215 @@ export default function Home() {
     setSession((s) => ({ ...s, stage: "assets_results" }));
   }, []);
 
+  /** After the API stream completes, reveal assistant text with a typewriter effect. */
+  const finalizeAssistantWithTypewriter = useCallback(
+    (
+      assistantMessageId: string,
+      fullText: string,
+      blocks: AssistantBlock[],
+      suggestionsAfter: string[] = [],
+    ) => {
+      const prefersReducedMotion =
+        typeof window !== "undefined" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+      const trimmed = fullText.trim();
+      if (trimmed.length === 0) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? {
+                  ...msg,
+                  content: "",
+                  displayContent: undefined,
+                  blocks,
+                  isStreaming: false,
+                }
+              : msg,
+          ),
+        );
+        setActiveLoadingText(null);
+        setIsResponding(false);
+        setSuggestions(suggestionsAfter);
+        return;
+      }
+
+      if (prefersReducedMotion) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === assistantMessageId
+              ? {
+                  ...msg,
+                  content: fullText,
+                  displayContent: undefined,
+                  blocks,
+                  isStreaming: false,
+                }
+              : msg,
+          ),
+        );
+        setActiveLoadingText(null);
+        setIsResponding(false);
+        setSuggestions(suggestionsAfter);
+        return;
+      }
+
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === assistantMessageId
+            ? {
+                ...msg,
+                content: fullText,
+                displayContent: "",
+                blocks,
+                isStreaming: true,
+              }
+            : msg,
+        ),
+      );
+      setActiveLoadingText(null);
+
+      runTypewriterQueue([{ id: assistantMessageId, text: fullText }], {
+        onSegmentUpdate: (_seg, display) => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMessageId ? { ...m, displayContent: display } : m,
+            ),
+          );
+        },
+        onQueueComplete: () => {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMessageId
+                ? { ...m, displayContent: undefined, isStreaming: false }
+                : m,
+            ),
+          );
+          setIsResponding(false);
+          setSuggestions(suggestionsAfter);
+        },
+      });
+    },
+    [runTypewriterQueue],
+  );
+
+  const streamFromApi = useCallback(
+    async (allMessages: Message[], currentSession: HomebuyingSession) => {
+      clearLoadingDelayTimer();
+      cancelTypewriter();
+      setIsResponding(true);
+      setActiveLoadingText("Thinking through your request...");
+
+      const assistantMessageId = nextMessageId("assistant");
+      let accumulatedText = "";
+      const accumulatedBlocks: AssistantBlock[] = [];
+      let suggestionsAfter: string[] = [];
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: assistantMessageId,
+          role: "assistant",
+          content: "",
+          displayContent: "",
+          isStreaming: true,
+          blocks: [],
+        },
+      ]);
+
+      try {
+        const apiMessages = allMessages.map((m) => ({
+          role: m.role,
+          content: m.content,
+        }));
+
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ messages: apiMessages, session: currentSession }),
+        });
+
+        const reader = res.body?.getReader();
+        if (!reader) throw new Error("No response body");
+
+        const decoder = new TextDecoder();
+        let buffer = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split("\n");
+          buffer = lines.pop() ?? "";
+
+          for (const line of lines) {
+            if (!line.trim()) continue;
+            let event: Record<string, unknown>;
+            try {
+              event = JSON.parse(line);
+            } catch {
+              continue;
+            }
+
+            if (event.type === "thinking") {
+              setActiveLoadingText(event.text as string);
+            } else if (event.type === "content") {
+              setActiveLoadingText(null);
+              accumulatedText += event.text as string;
+            } else if (event.type === "block") {
+              setActiveLoadingText(null);
+              const block = event.block as AssistantBlock;
+              accumulatedBlocks.push(block);
+            } else if (event.type === "error") {
+              console.error("[Gemini stream error]", event.message);
+            } else if (event.type === "session") {
+              const newSession = event.session as HomebuyingSession;
+              setSession(newSession);
+              setInputMode(
+                newSession.stage === "address_prompt" ? "property_address" : "default",
+              );
+            } else if (event.type === "done") {
+              // finalize below
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Stream error — falling back to local logic:", err);
+        try {
+          const lastMsg = allMessages[allMessages.length - 1]?.content ?? "";
+          const localResp = getCaseyResponse(lastMsg, currentSession);
+          accumulatedText = localResp.content ?? (accumulatedText || "I'm sorry, something went wrong. Please try again.");
+          if (localResp.blocks) {
+            for (const b of localResp.blocks) {
+              accumulatedBlocks.push(b);
+            }
+          }
+          setSession(localResp.session);
+          setInputMode(localResp.inputMode ?? "default");
+          if (localResp.suggestions) suggestionsAfter = localResp.suggestions;
+        } catch {
+          accumulatedText = accumulatedText || "I'm sorry, something went wrong. Please try again.";
+        }
+      }
+
+      finalizeAssistantWithTypewriter(assistantMessageId, accumulatedText, accumulatedBlocks, suggestionsAfter);
+    },
+    [clearLoadingDelayTimer, finalizeAssistantWithTypewriter, nextMessageId, cancelTypewriter],
+  );
+
   const handleCreditWizardComplete = useCallback(() => {
     const merged: HomebuyingSession = { ...session, creditForm: creditDraft, stage: "credit_authorization" };
     setSession(merged);
-    queueAssistantResponse(getCreditThreadAfterWizard(merged));
-  }, [session, creditDraft, queueAssistantResponse]);
+    const systemMessage: Message = {
+      id: nextMessageId("user"),
+      role: "user",
+      content: "I have completed the credit check wizard. My SSN and address have been securely submitted. Please proceed with the soft credit authorization.",
+    };
+    const allMsgs = [...messages, systemMessage];
+    setMessages(allMsgs);
+    streamFromApi(allMsgs, merged);
+  }, [session, creditDraft, nextMessageId, messages, streamFromApi]);
 
   const handleSend = useCallback(
     (text: string) => {
@@ -323,13 +373,13 @@ export default function Home() {
       };
 
       scrollTargetRef.current = userMessageId;
-      setMessages((prev) => [...prev, userMessage]);
+      const updatedMessages = [...messages, userMessage];
+      setMessages(updatedMessages);
       setSuggestions([]);
 
-      const response = getCaseyResponse(text, session);
-      queueAssistantResponse(response);
+      streamFromApi(updatedMessages, session);
     },
-    [clearLoadingDelayTimer, nextMessageId, queueAssistantResponse, session]
+    [clearLoadingDelayTimer, nextMessageId, messages, session, streamFromApi],
   );
 
   const handleCreditSuccessContinue = useCallback(() => {
