@@ -27,7 +27,7 @@ interface ListedPropertyListingProps {
  * Matches multi-property search list design.
  */
 export default function ListedPropertyListing({ item }: ListedPropertyListingProps) {
-  const href = listingHref(item.rentCastId);
+  const href = listingHref(item.listingId);
 
   return (
     <Link

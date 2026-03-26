@@ -7,7 +7,7 @@ import {
   handleComputeAffordability,
   handleSearchProperties,
 } from "@/lib/geminiTools";
-import { formatPropertySearchThinkingLabel } from "@/lib/rentCastSearchParams";
+import { formatPropertySearchThinkingLabel } from "@/lib/propertySearchParams";
 import {
   buildApplicationSummary,
   moveToAssetsResult,
@@ -378,7 +378,7 @@ export async function POST(req: NextRequest) {
               const result = await withTimeout(
                 handleSearchProperties(fc.args),
                 25_000,
-                "RentCast search",
+                "Property search",
               );
               if (result.summary.items.length > 0) {
                 allBlocks.push({ type: "property_summary", data: result.summary });
@@ -407,6 +407,10 @@ export async function POST(req: NextRequest) {
 
         const { cleaned, blocks: markerBlocks } = extractBlockMarkers(fullAssistantText);
         for (const b of markerBlocks) {
+          // Tool already streams property_summary with live listing data; model markers duplicate the same cards.
+          if (b.type === "property_summary" && allToolsCalled.includes("search_properties")) {
+            continue;
+          }
           allBlocks.push(b);
           write({ type: "block", block: b });
         }

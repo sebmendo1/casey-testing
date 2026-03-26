@@ -88,9 +88,9 @@ export interface HomebuyingSession {
   creditForm?: CreditFormData;
 }
 
-/** One listing row for property search tiles (chat + detail link). */
+/** One listing row for property search tiles (chat + detail link). `listingId` is the Zillow zpid for bundled data. */
 export interface PropertyTileData {
-  rentCastId: string;
+  listingId: string;
   price: string;
   address: string;
   beds: number;
@@ -106,6 +106,8 @@ export interface PropertyTileData {
   mlsNumber?: string;
   latitude?: number;
   longitude?: number;
+  /** Original listing URL when available (e.g. Zillow). */
+  listingUrl?: string;
 }
 
 export interface PropertySummaryData {

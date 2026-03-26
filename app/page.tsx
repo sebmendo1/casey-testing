@@ -26,6 +26,9 @@ const DEFAULT_INPUT_PLACEHOLDER = "How can I help you today?";
 const ADDRESS_INPUT_PLACEHOLDER = "Tell us your property address";
 const TOP_ANCHOR_OFFSET_PX = 6;
 
+/** Persist chat across navigations (e.g. listing detail → back) for this browser tab. */
+const CHAT_SESSION_STORAGE_KEY = "casey-chat-session-v1";
+
 /** Brand canvas */
 const CHAT_SURFACE = "#FAFBFF";
 
@@ -47,6 +50,7 @@ export default function Home() {
   const [creditDraft, setCreditDraft] = useState<CreditFormData>(() => emptyCreditForm());
   const [creditModalOpen, setCreditModalOpen] = useState(false);
   const [creditSuccessOpen, setCreditSuccessOpen] = useState(false);
+  const [chatSessionRestored, setChatSessionRestored] = useState(false);
 
   const { runQueue: runTypewriterQueue, cancel: cancelTypewriter, isRunning: typewriterRunning } =
     useTypewriterQueue({
@@ -116,7 +120,63 @@ export default function Home() {
     setCreditModalOpen(false);
     setCreditSuccessOpen(false);
     setSuggestions(WELCOME_SUGGESTIONS);
+    try {
+      sessionStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
+    } catch {
+      /* ignore */
+    }
   }, [cancelTypewriter, clearLoadingDelayTimer]);
+
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(CHAT_SESSION_STORAGE_KEY);
+      if (raw) {
+        const data = JSON.parse(raw) as {
+          messages?: Message[];
+          session?: HomebuyingSession;
+          suggestions?: string[];
+          inputMode?: CaseyInputMode;
+          msgCounter?: number;
+        };
+        if (Array.isArray(data.messages) && data.messages.length > 0) {
+          setMessages(data.messages);
+        }
+        if (data.session && typeof data.session === "object") {
+          setSession(data.session);
+        }
+        if (Array.isArray(data.suggestions)) {
+          setSuggestions(data.suggestions);
+        }
+        if (data.inputMode === "default" || data.inputMode === "property_address") {
+          setInputMode(data.inputMode);
+        }
+        if (typeof data.msgCounter === "number" && data.msgCounter > 0) {
+          msgCounterRef.current = data.msgCounter;
+        }
+      }
+    } catch {
+      /* ignore corrupt storage */
+    }
+    setChatSessionRestored(true);
+  }, []);
+
+  useEffect(() => {
+    if (!chatSessionRestored) return;
+    try {
+      sessionStorage.setItem(
+        CHAT_SESSION_STORAGE_KEY,
+        JSON.stringify({
+          messages,
+          session,
+          suggestions,
+          inputMode,
+          msgCounter: msgCounterRef.current,
+        }),
+      );
+    } catch {
+      /* quota / private mode */
+    }
+  }, [chatSessionRestored, messages, session, suggestions, inputMode]);
 
   useEffect(() => {
     return () => {
@@ -427,7 +487,7 @@ export default function Home() {
     [handleSend]
   );
 
-  const showWelcome = messages.length === 0;
+  const showWelcome = chatSessionRestored && messages.length === 0;
 
   const showCreditWizard =
     session.stage === "credit_intro" ||
@@ -475,7 +535,9 @@ export default function Home() {
               selectFromEventTarget(event.target);
             }}
           >
-            {showWelcome ? (
+            {!chatSessionRestored ? (
+              <div className="min-h-full flex-1" aria-busy="true" aria-label="Restoring chat" />
+            ) : showWelcome ? (
               <div className="min-h-full">
                 <WelcomeScreen onSuggestionClick={handleSuggestionClick} />
               </div>
@@ -502,9 +564,17 @@ export default function Home() {
                         className={`${
                           msg.role === "assistant" ? "chat-output-row" : "selectable-chat-row"
                         } ${selectedMessageId === msg.id ? "chat-row-selected" : ""} ${
-                          msg.isStreaming ? "message-stream-enter" : "opacity-0 animate-fade-in"
+                          msg.isStreaming
+                            ? "message-stream-enter"
+                            : msg.role === "assistant"
+                              ? "opacity-100"
+                              : "opacity-0 animate-fade-in"
                         }`}
-                        style={msg.isStreaming ? undefined : { animationDelay: "50ms" }}
+                        style={
+                          msg.isStreaming || msg.role === "assistant"
+                            ? undefined
+                            : { animationDelay: "50ms" }
+                        }
                       >
                         <ChatMessage
                           role={msg.role}
@@ -542,7 +612,13 @@ export default function Home() {
           <div className="chat-shell">
             <ChatInputField
               onSend={handleSend}
-              disabled={isBusy || showCreditWizard || creditModalOpen || creditSuccessOpen}
+              disabled={
+                !chatSessionRestored ||
+                isBusy ||
+                showCreditWizard ||
+                creditModalOpen ||
+                creditSuccessOpen
+              }
               placeholder={inputMode === "property_address" ? ADDRESS_INPUT_PLACEHOLDER : DEFAULT_INPUT_PLACEHOLDER}
             />
             <p

@@ -44,7 +44,7 @@ export default function PropertyListingTile({ item, variant }: PropertyListingTi
       <p className="text-[46px] font-semibold leading-tight text-[#002855]">{item.price}</p>
       <p className="text-[16px] leading-5 text-[#00285599]">{specLine}</p>
       <p className="text-[18px] leading-[24px] text-[#002855]">{item.address}</p>
-      {item.rentCastId ? (
+      {item.listingId ? (
         <p className="mt-3 text-[15px] font-semibold text-[#0052cc]">View full listing →</p>
       ) : null}
     </div>
@@ -52,16 +52,16 @@ export default function PropertyListingTile({ item, variant }: PropertyListingTi
 
   return (
     <div className="overflow-hidden rounded-[1.6rem] bg-white shadow-[0_6px_18px_rgba(0,40,85,0.07),0_1px_4px_rgba(0,40,85,0.04)]">
-      {item.rentCastId ? (
-        <Link href={listingHref(item.rentCastId)} className="block">
+      {item.listingId ? (
+        <Link href={listingHref(item.listingId)} className="block">
           {thumb}
         </Link>
       ) : (
         thumb
       )}
       <div className="space-y-1 p-4">
-        {item.rentCastId ? (
-          <Link href={listingHref(item.rentCastId)} className="block">
+        {item.listingId ? (
+          <Link href={listingHref(item.listingId)} className="block">
             {body}
           </Link>
         ) : (

@@ -4,21 +4,8 @@ import {
   computeAffordabilityEstimate,
   formatAffordabilityResultCard,
 } from "./affordabilityCalculator";
-import {
-  type RentCastListing,
-  extractListingImageUrls,
-  fetchSaleListingById,
-  mapWithConcurrency,
-  mergeListingRecords,
-} from "./rentCastApi";
-import {
-  formatBedroomsMinParam,
-  formatPriceRangeParam,
-  normalizeSaleListingsResponse,
-  normalizeStateAbbrev,
-  normalizeZip,
-  titleCaseCity,
-} from "./rentCastSearchParams";
+import type { PropertyListing } from "./propertyListing";
+import { filterListingsForSearch } from "./zillowListings";
 
 export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
@@ -58,7 +45,7 @@ export const TOOL_DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "search_properties",
     description:
-      "Search for homes currently listed for sale. Pass EITHER a 5-digit US zipCode OR both city and state (state can be two-letter code OR full name like Texas). RentCast city names are case-sensitive—use normal capitalization (e.g. Austin, San Antonio). Returns up to 5 listings with specs and ids.",
+      "Search bundled Zillow-style property listings (demo data). Pass EITHER a 5-digit US zipCode OR both city and state (state can be two-letter code OR full name like Texas). Use normal capitalization for city names (e.g. Austin, San Antonio). Returns up to 5 listings with specs and listing ids (zpid).",
     parameters: {
       type: Type.OBJECT,
       properties: {
@@ -129,44 +116,6 @@ export function handleComputeAffordability(args: Record<string, unknown>): Affor
   };
 }
 
-function formatUsd(n: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  }).format(Math.round(n));
-}
-
-function listingToTile(listing: RentCastListing): PropertyTileData {
-  const address =
-    listing.formattedAddress ??
-    [listing.addressLine1, listing.city, listing.state, listing.zipCode]
-      .filter(Boolean)
-      .join(", ");
-
-  const urls = extractListingImageUrls(listing);
-  const id = String(listing.id ?? "").trim() || address;
-
-  return {
-    rentCastId: id,
-    price: listing.price ? formatUsd(listing.price) : "Price not listed",
-    address,
-    beds: listing.bedrooms ?? 0,
-    baths: listing.bathrooms ?? 0,
-    sqft: listing.squareFootage ?? 0,
-    imageUrl: urls[0],
-    imageUrls: urls.length ? urls : undefined,
-    yearBuilt: listing.yearBuilt,
-    lotSizeSqft: listing.lotSize,
-    propertyType: listing.propertyType,
-    daysOnMarket: listing.daysOnMarket,
-    hoaFeeMonthly: listing.hoa?.fee,
-    mlsNumber: listing.mlsNumber,
-    latitude: listing.latitude,
-    longitude: listing.longitude,
-  };
-}
-
 function buildPropertySummaryBlock(items: PropertyTileData[]): PropertySummaryData {
   const displayMode: "single" | "list" = items.length > 1 ? "list" : "single";
   return {
@@ -180,75 +129,10 @@ function buildPropertySummaryBlock(items: PropertyTileData[]): PropertySummaryDa
 
 export async function handleSearchProperties(
   args: Record<string, unknown>,
-): Promise<{ summary: PropertySummaryData; raw: RentCastListing[] }> {
-  const apiKey = process.env.RENTCAST_API_KEY;
-  if (!apiKey) {
-    return {
-      summary: buildPropertySummaryBlock([]),
-      raw: [],
-    };
-  }
-
-  const zip = normalizeZip(args.zipCode);
-  const cityRaw = String(args.city ?? "").trim();
-  const stateAbbrev = normalizeStateAbbrev(String(args.state ?? ""));
-
-  const params = new URLSearchParams();
-  params.set("status", "Active");
-  params.set("limit", "5");
-
-  if (zip) {
-    params.set("zipCode", zip);
-  } else if (cityRaw && stateAbbrev) {
-    params.set("city", titleCaseCity(cityRaw));
-    params.set("state", stateAbbrev);
-  } else {
-    console.error("RentCast search: need a valid 5-digit zipCode or city + state", {
-      city: cityRaw,
-      state: args.state,
-      zipCode: args.zipCode,
-    });
-    return {
-      summary: buildPropertySummaryBlock([]),
-      raw: [],
-    };
-  }
-
-  const priceRange = formatPriceRangeParam(args.minPrice, args.maxPrice);
-  if (priceRange) params.set("price", priceRange);
-
-  const bedroomsRange = formatBedroomsMinParam(args.bedrooms);
-  if (bedroomsRange) params.set("bedrooms", bedroomsRange);
-
-  const url = `https://api.rentcast.io/v1/listings/sale?${params.toString()}`;
-
-  const res = await fetch(url, {
-    headers: { "X-Api-Key": apiKey, Accept: "application/json" },
-  });
-
-  if (!res.ok) {
-    const errBody = await res.text();
-    console.error(`RentCast error ${res.status}: ${errBody}`);
-    return {
-      summary: buildPropertySummaryBlock([]),
-      raw: [],
-    };
-  }
-
-  const rawJson: unknown = await res.json();
-  const data = normalizeSaleListingsResponse(rawJson);
-  const slice = data.slice(0, 5);
-
-  const enriched = await mapWithConcurrency(slice, 3, async (row) => {
-    const id = row.id?.trim();
-    if (!id) return mergeListingRecords(row, null);
-    const detail = await fetchSaleListingById(apiKey, id);
-    return mergeListingRecords(row, detail);
-  });
-
-  const items = enriched.map(listingToTile);
+): Promise<{ summary: PropertySummaryData; raw: PropertyListing[] }> {
+  const items = filterListingsForSearch(args);
   return {
     summary: buildPropertySummaryBlock(items),
-    raw: enriched,
+    raw: [],
   };
 }

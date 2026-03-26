@@ -60,7 +60,10 @@ export default function ChatMessage({
         <p className="mb-1 text-[11px] text-[#00285599]">{timestamp}</p>
       )}
       {(displayContent ?? content).trim().length > 0 && (
-        <AssistantRichText content={displayContent ?? content} isStreaming={Boolean(isStreaming)} />
+        <AssistantRichText
+          displayText={displayContent ?? content}
+          fullText={content.trim().length > 0 ? content : undefined}
+        />
       )}
       {blocks && blocks.length > 0 && (
         <div className="mt-5 space-y-4">
@@ -73,7 +76,6 @@ export default function ChatMessage({
                 />
               );
             }
-            if (isStreaming) return null;
             if (block.type === "property_summary") {
               return <PropertySummaryCard key={`property-${index}`} data={block.data} />;
             }

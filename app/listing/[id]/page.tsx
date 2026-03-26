@@ -1,10 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import {
-  extractListingImageUrls,
-  fetchSaleListingResult,
-  type RentCastListing,
-} from "@/lib/rentCastApi";
+import { extractListingImageUrls, type PropertyListing } from "@/lib/propertyListing";
+import { getListingByZpid, zillowRowToPropertyListing } from "@/lib/zillowListings";
 
 function formatUsd(n: number): string {
   return new Intl.NumberFormat("en-US", {
@@ -14,7 +11,7 @@ function formatUsd(n: number): string {
   }).format(Math.round(n));
 }
 
-function formatAddress(listing: RentCastListing): string {
+function formatAddress(listing: PropertyListing): string {
   return (
     listing.formattedAddress ??
     [listing.addressLine1, listing.city, listing.state, listing.zipCode]
@@ -23,7 +20,7 @@ function formatAddress(listing: RentCastListing): string {
   );
 }
 
-function mapHref(listing: RentCastListing): string | null {
+function mapHref(listing: PropertyListing): string | null {
   if (listing.latitude != null && listing.longitude != null) {
     return `https://www.google.com/maps?q=${listing.latitude},${listing.longitude}`;
   }
@@ -43,31 +40,14 @@ export default async function ListingDetailPage({ params }: PageProps) {
   const id = decodeURIComponent(raw).trim();
   if (!id) notFound();
 
-  const apiKey = process.env.RENTCAST_API_KEY;
-  if (!apiKey) {
-    return (
-      <div className="mx-auto max-w-3xl px-4 py-10">
-        <p className="text-[#002855]">Listing data is not available (API key missing).</p>
-        <BackLink />
-      </div>
-    );
-  }
+  const row = getListingByZpid(id);
+  if (!row) notFound();
 
-  const result = await fetchSaleListingResult(apiKey, id);
-  if (!result.ok) {
-    if (result.status === 404) notFound();
-    return (
-      <div className="mx-auto max-w-3xl px-4 py-10">
-        <p className="text-[#002855]">We couldn&apos;t load this listing. Please try again later.</p>
-        <BackLink />
-      </div>
-    );
-  }
-
-  const listing = result.listing;
+  const listing = zillowRowToPropertyListing(row);
   const photos = extractListingImageUrls(listing);
   const address = formatAddress(listing);
   const mapUrl = mapHref(listing);
+  const zillowUrl = typeof listing.listingUrl === "string" ? listing.listingUrl : null;
 
   const specs: { label: string; value: string }[] = [];
   if (listing.bedrooms != null) specs.push({ label: "Bedrooms", value: String(listing.bedrooms) });
@@ -133,6 +113,16 @@ export default async function ListingDetailPage({ params }: PageProps) {
                 className="inline-block text-[15px] font-semibold text-[#0052cc]"
               >
                 Open in Google Maps →
+              </a>
+            ) : null}
+            {zillowUrl ? (
+              <a
+                href={zillowUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="ml-4 inline-block text-[15px] font-semibold text-[#0052cc]"
+              >
+                View on Zillow →
               </a>
             ) : null}
           </div>

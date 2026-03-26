@@ -8,17 +8,30 @@ interface PropertySummaryCardProps {
   data: PropertySummaryData | Record<string, unknown>;
 }
 
+function dedupeItemsByListingId(items: PropertyTileData[]): PropertyTileData[] {
+  const seen = new Set<string>();
+  const out: PropertyTileData[] = [];
+  for (const item of items) {
+    const id = String(item.listingId ?? "").trim() || item.address;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(item);
+  }
+  return out;
+}
+
 function normalizePropertySummary(raw: PropertySummaryCardProps["data"]): PropertySummaryData {
   const d = raw as Record<string, unknown>;
   const itemsUnknown = d.items;
   if (Array.isArray(itemsUnknown) && itemsUnknown.length > 0) {
-    return raw as PropertySummaryData;
+    const base = raw as PropertySummaryData;
+    return { ...base, items: dedupeItemsByListingId(base.items) };
   }
   const price = d.price;
   const address = d.address;
   if (typeof price === "string" && typeof address === "string") {
     const tile: PropertyTileData = {
-      rentCastId: String(d.rentCastId ?? address),
+      listingId: String(d.listingId ?? address),
       price,
       address,
       beds: Number(d.beds) || 0,
@@ -63,7 +76,7 @@ export default function PropertySummaryCard({ data }: PropertySummaryCardProps) 
       ) : mode === "list" ? (
         <ul className="space-y-3" aria-label="Property listings">
           {items.map((item, i) => (
-            <li key={`${item.rentCastId}-${i}`}>
+            <li key={`${item.listingId}-${i}`}>
               <PropertyListingTile item={item} variant="compact" />
             </li>
           ))}

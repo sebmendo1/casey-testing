@@ -2,7 +2,7 @@
 
 /**
  * Casey UI tokens
- * Type scale: display (welcome ~26px) | title (wizard/header) | body (16/20 assistant) | caption (11–13px meta)
+ * Type scale: display (welcome ~26px) | title (wizard/header) | body (16/22 assistant) | caption (11–13px meta)
  */
 :root {
   --background: #fafbff;

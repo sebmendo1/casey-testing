@@ -103,7 +103,7 @@ function moveToOfferRecommendation(session: HomebuyingSession, propertyAddress: 
           displayMode: "single",
           items: [
             {
-              rentCastId: "mock-coral-dr-frisco",
+              listingId: "10001001001",
               price: "$420,000",
               address: "12509 Coral Dr, Frisco TX, 75036",
               beds: 4,

@@ -1,5 +1,11 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Prototype: property search data
+
+Property search uses a **bundled JSON sample** ([`data/zillowListings.json`](data/zillowListings.json)) shaped like the public [Zillow listing dataset sample](https://github.com/luminati-io/Zillow-dataset-samples) (`zpid`, `url`, `streetAddress`, `city`, `state`, `zipcode`, `price`, `livingArea`, `lotSize`, `latitude`, `longitude`, `homeType`, `homeStatus`, etc.). The full sample on GitHub is distributed as a larger archive (`.7z`); replace or extend `data/zillowListings.json` with your own export in the same shape to add more rows.
+
+There is **no external listings API** — search filters this file by ZIP or city + state.
+
 ## Getting Started
 
 First, run the development server:
