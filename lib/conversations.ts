@@ -1,6 +1,11 @@
-import type { CaseyResponse, HomebuyingSession } from "./types";
+import type { AffordabilityDownPayment, CaseyResponse, HomebuyingSession } from "./types";
 import { thinkingStepsFromStrings } from "./aiThinking";
 import { formatAddressLine, maskSsn } from "./creditUtils";
+import {
+  computeAffordabilityEstimate,
+  formatAffordabilityResultCard,
+  parseMoneyOrPercent,
+} from "./affordabilityCalculator";
 
 function normalizeInput(text: string): string {
   return text.trim().toLowerCase();
@@ -168,6 +173,37 @@ function buildApplicationSummary(session: HomebuyingSession) {
   return rows;
 }
 
+const AFFORDABILITY_QUALIFY_PHRASES = [
+  "see how much i can qualify",
+  "how much i can qualify",
+  "qualify for",
+  "buying power",
+  "affordability estimate",
+];
+
+function buildAffordabilityResultResponse(session: HomebuyingSession): CaseyResponse {
+  const income = session.affordabilityAnnualIncome ?? 0;
+  const debts = session.affordabilityMonthlyDebts ?? 0;
+  const dp: AffordabilityDownPayment = session.affordabilityDownPayment ?? { mode: "percent", value: 20 };
+  const compute = computeAffordabilityEstimate({
+    annualIncome: income,
+    monthlyDebts: debts,
+    downPayment: dp,
+  });
+  const card = formatAffordabilityResultCard(compute);
+  return {
+    content:
+      "Here's a quick estimate based on what you shared. Principal and interest only—taxes, insurance, HOA, and PMI are not included.\n\nWhen you're ready, say if you'd like to apply for a mortgage, adjust your numbers and rerun the estimate, or start over.",
+    session: { ...session, stage: "affordability_result" },
+    blocks: [
+      { type: "status_line", data: { text: "Estimate ready" } },
+      { type: "affordability_result", data: card },
+    ],
+    suggestions: [],
+    thinkingSteps: NUMBERS_LOADING,
+  };
+}
+
 /** Shown in chat after the credit wizard (SSN / address / review) is submitted. */
 export function getCreditThreadAfterWizard(session: HomebuyingSession): CaseyResponse {
   return {
@@ -208,11 +244,104 @@ export function getCaseyResponse(
       };
     }
 
+    if (includesAny(normalized, AFFORDABILITY_QUALIFY_PHRASES)) {
+      return {
+        content:
+          "I'll estimate how much you may be able to borrow from income, monthly debts, and your down payment. This is only a rough guide—not a loan offer or financial advice.\n\nWhat is your annual gross income before taxes?",
+        suggestions: [],
+        session: { stage: "affordability_income" },
+        thinkingSteps: NUMBERS_LOADING,
+      };
+    }
+
     return {
       content:
         "Select a launch option to continue: Apply for a home loan, See how much I can qualify for, or Search for homes in my area.",
       session,
     };
+  }
+
+  if (session.stage === "affordability_income") {
+    const p = parseMoneyOrPercent(userMessage);
+    if (!p.ok || p.isPercent) {
+      return {
+        content: "Please enter your annual gross income as a dollar amount (e.g. 85000 or $85,000).",
+        session,
+        suggestions: [],
+      };
+    }
+    return {
+      content:
+        "What are your total minimum monthly payments on non-housing debts—car loans, credit cards, student loans, and similar? (Not rent or utilities.) Enter 0 if none.",
+      suggestions: [],
+      session: { ...session, affordabilityAnnualIncome: p.value, stage: "affordability_debts" },
+      thinkingSteps: NUMBERS_LOADING,
+    };
+  }
+
+  if (session.stage === "affordability_debts") {
+    const p = parseMoneyOrPercent(userMessage);
+    if (!p.ok || p.isPercent) {
+      return {
+        content: "Please enter a monthly dollar amount (e.g. 0, 350, or $500). Use 0 if you have no such debts.",
+        session,
+        suggestions: [],
+      };
+    }
+    return {
+      content:
+        "How much do you plan to put down? Enter a percentage of the purchase price (e.g. 20%) or a dollar amount (e.g. $40,000).",
+      suggestions: [],
+      session: { ...session, affordabilityMonthlyDebts: p.value, stage: "affordability_down_payment" },
+      thinkingSteps: NUMBERS_LOADING,
+    };
+  }
+
+  if (session.stage === "affordability_down_payment") {
+    const p = parseMoneyOrPercent(userMessage);
+    if (!p.ok) {
+      return {
+        content: "Please enter a percent (e.g. 20%) or a dollar amount (e.g. $40,000).",
+        session,
+        suggestions: [],
+      };
+    }
+    const dp: AffordabilityDownPayment = p.isPercent
+      ? { mode: "percent", value: Math.min(p.value, 100) }
+      : { mode: "dollar", value: p.value };
+    return buildAffordabilityResultResponse({
+      ...session,
+      affordabilityDownPayment: dp,
+      stage: "affordability_down_payment",
+    });
+  }
+
+  if (session.stage === "affordability_result") {
+    if (includesAny(normalized, ["apply for a mortgage", "apply for a home loan"])) {
+      return {
+        content:
+          "Great—let's build on your estimate with a full application.\n\nAs of today, where are you in your home buying journey?",
+        suggestions: ["I'm still researching", "Starting to make offers", "Signed a purchase contract"],
+        session: { stage: "journey_question" },
+        thinkingSteps: START_LOADING,
+      };
+    }
+    if (includesAny(normalized, ["adjust my numbers", "adjust"])) {
+      return {
+        content: "Let's update your numbers. What is your annual gross income before taxes?",
+        suggestions: [],
+        session: { stage: "affordability_income" },
+        thinkingSteps: NUMBERS_LOADING,
+      };
+    }
+    if (includesAny(normalized, ["start over", "back to start"])) {
+      return {
+        content: "",
+        suggestions: [],
+        session: DEFAULT_SESSION,
+      };
+    }
+    return fallback(session);
   }
 
   if (session.stage === "journey_question") {

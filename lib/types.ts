@@ -36,6 +36,10 @@ export type CaseyInputMode = "default" | "property_address";
 
 export type CaseyStage =
   | "welcome"
+  | "affordability_income"
+  | "affordability_debts"
+  | "affordability_down_payment"
+  | "affordability_result"
   | "journey_question"
   | "timeline_question"
   | "agent_question"
@@ -60,8 +64,16 @@ export interface CreditFormData {
   zip: string;
 }
 
+export interface AffordabilityDownPayment {
+  mode: "percent" | "dollar";
+  value: number;
+}
+
 export interface HomebuyingSession {
   stage: CaseyStage;
+  affordabilityAnnualIncome?: number;
+  affordabilityMonthlyDebts?: number;
+  affordabilityDownPayment?: AffordabilityDownPayment;
   journeyStage?: string;
   buyTimeline?: string;
   agentStatus?: string;
@@ -123,6 +135,15 @@ export interface ApplicationSummaryData {
   fields: ReviewField[];
 }
 
+/** Formatted strings for chat card; numeric values computed in affordabilityCalculator */
+export interface AffordabilityResultData {
+  headline: string;
+  maxHomePriceLabel: string;
+  monthlyPaymentLabel: string;
+  maxLoanLabel: string;
+  disclaimer: string;
+}
+
 export type AssistantBlock =
   | { type: "status_line"; data: { text: string; displayText?: string } }
   | { type: "property_summary"; data: PropertySummaryData }
@@ -130,7 +151,8 @@ export type AssistantBlock =
   | { type: "inline_cta"; data: InlineCtaData }
   | { type: "credit_authorization"; data: CreditAuthorizationData }
   | { type: "credit_status"; data: CreditStatusData }
-  | { type: "application_summary"; data: ApplicationSummaryData };
+  | { type: "application_summary"; data: ApplicationSummaryData }
+  | { type: "affordability_result"; data: AffordabilityResultData };
 
 export interface CaseyResponse {
   content?: string;

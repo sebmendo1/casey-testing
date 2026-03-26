@@ -9,6 +9,7 @@ import AssistantStatusLine from "./AssistantStatusLine";
 import CreditAuthorizationCard from "./CreditAuthorizationCard";
 import ApplicationSummaryCard from "./ApplicationSummaryCard";
 import CreditCheckStatusCard from "./credit/CreditCheckStatusCard";
+import AffordabilityResultCard from "./AffordabilityResultCard";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -103,6 +104,9 @@ export default function ChatMessage({
             }
             if (block.type === "application_summary") {
               return <ApplicationSummaryCard key={`summary-${index}`} data={block.data} />;
+            }
+            if (block.type === "affordability_result") {
+              return <AffordabilityResultCard key={`afford-${index}`} data={block.data} />;
             }
             return null;
           })}
