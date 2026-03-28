@@ -3,71 +3,90 @@
 import Link from "next/link";
 import ListedPropertyListing, { formatBathroomsDisplay } from "./ListedPropertyListing";
 import type { PropertyTileData } from "@/lib/types";
+import { SkeletonBox, SkeletonText } from "./skeletons/SkeletonPrimitives";
 
 interface PropertyListingTileProps {
   item: PropertyTileData;
   variant: "hero" | "compact";
+  loading?: boolean;
 }
 
 function listingHref(id: string) {
   return `/listing/${encodeURIComponent(id)}`;
 }
 
-export default function PropertyListingTile({ item, variant }: PropertyListingTileProps) {
+export default function PropertyListingTile({ item, variant, loading }: PropertyListingTileProps) {
+  if (loading) {
+    if (variant === "compact") {
+      return (
+        <div className="flex gap-4 rounded-[1.75rem] bg-white p-4 shadow-[0_6px_20px_rgba(0,40,85,0.08),0_1px_4px_rgba(0,40,85,0.04)]">
+          <SkeletonBox className="size-[96px] shrink-0 rounded-2xl" />
+          <div className="flex min-w-0 flex-1 flex-col justify-center gap-2">
+            <SkeletonBox className="h-6 w-24" />
+            <SkeletonText lines={2} widths={["w-3/4", "w-full"]} />
+          </div>
+        </div>
+      );
+    }
+    // Hero skeleton: simple text lines, no image placeholder
+    return (
+      <div className="overflow-hidden rounded-[1.25rem] bg-white p-5 shadow-[0_6px_18px_rgba(0,40,85,0.07),0_1px_4px_rgba(0,40,85,0.04)]">
+        <div className="space-y-3">
+          <SkeletonBox className="h-4 w-[70%]" />
+          <SkeletonBox className="h-4 w-[50%]" />
+          <SkeletonBox className="h-4 w-[60%]" />
+          <SkeletonBox className="h-4 w-[45%]" />
+        </div>
+      </div>
+    );
+  }
+
   if (variant === "compact") {
     return <ListedPropertyListing item={item} />;
   }
 
-  const specLine = [
-    `${item.beds} beds | ${formatBathroomsDisplay(item.baths)} baths | ${item.sqft.toLocaleString()} sqft`,
-    item.yearBuilt != null ? `Built ${item.yearBuilt}` : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  // Specs line: beds | baths | sqft
+  const specsLine = `${item.beds} beds  |  ${formatBathroomsDisplay(item.baths)} baths  |  ${item.sqft.toLocaleString()} sqft`;
 
-  const thumb = (
-    <div className="h-[230px] w-full shrink-0 overflow-hidden bg-[linear-gradient(160deg,#002855_0%,#00285599_45%,#00285514_100%)]">
-      {item.imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={item.imageUrl}
-          alt=""
-          className="h-full w-full object-cover"
-          loading="lazy"
-        />
-      ) : null}
-    </div>
-  );
+  const href = item.listingId ? listingHref(item.listingId) : null;
 
-  const body = (
-    <div className="space-y-1">
-      <p className="text-[46px] font-semibold leading-tight text-[#002855]">{item.price}</p>
-      <p className="text-[16px] leading-5 text-[#00285599]">{specLine}</p>
-      <p className="text-[18px] leading-[24px] text-[#002855]">{item.address}</p>
-      {item.listingId ? (
-        <p className="mt-3 text-[15px] font-semibold text-[#0052cc]">View full listing →</p>
-      ) : null}
-    </div>
-  );
-
-  return (
-    <div className="overflow-hidden rounded-[1.6rem] bg-white shadow-[0_6px_18px_rgba(0,40,85,0.07),0_1px_4px_rgba(0,40,85,0.04)]">
-      {item.listingId ? (
-        <Link href={listingHref(item.listingId)} className="block">
-          {thumb}
-        </Link>
-      ) : (
-        thumb
-      )}
-      <div className="space-y-1 p-4">
-        {item.listingId ? (
-          <Link href={listingHref(item.listingId)} className="block">
-            {body}
-          </Link>
-        ) : (
-          body
-        )}
+  const cardContent = (
+    <>
+      {/* Hero image - full width, rounded top corners */}
+      <div className="aspect-[4/3] w-full overflow-hidden rounded-t-[1.25rem] bg-[linear-gradient(160deg,#002855_0%,#00285599_45%,#00285514_100%)]">
+        {item.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={item.imageUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            loading="lazy"
+          />
+        ) : null}
       </div>
+
+      {/* Content area */}
+      <div className="px-5 py-4">
+        {/* Price - large bold */}
+        <p className="text-[28px] font-bold text-[#002855]">{item.price}</p>
+        {/* Address */}
+        <p className="mt-1 text-[15px] text-[#002855]">{item.address}</p>
+        {/* Specs line - muted */}
+        <p className="mt-1 text-[14px] text-[#00285599]">{specsLine}</p>
+      </div>
+    </>
+  );
+
+  return href ? (
+    <Link
+      href={href}
+      className="block overflow-hidden rounded-[1.25rem] bg-white shadow-[0_6px_18px_rgba(0,40,85,0.07),0_1px_4px_rgba(0,40,85,0.04)]"
+    >
+      {cardContent}
+    </Link>
+  ) : (
+    <div className="overflow-hidden rounded-[1.25rem] bg-white shadow-[0_6px_18px_rgba(0,40,85,0.07),0_1px_4px_rgba(0,40,85,0.04)]">
+      {cardContent}
     </div>
   );
 }
