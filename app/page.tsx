@@ -7,7 +7,8 @@ import ChatMessage from "@/components/ChatMessage";
 import ChatInputField from "@/components/ChatInputField";
 import AssistantStatusLine from "@/components/AssistantStatusLine";
 import SuggestionPills from "@/components/SuggestionPills";
-import type { Message, CaseyInputMode, HomebuyingSession, CreditFormData, AssistantBlock } from "@/lib/types";
+import type { Message, CaseyInputMode, HomebuyingSession, CreditFormData, AssistantBlock, BinaryDecisionData } from "@/lib/types";
+import DecisionPills from "@/components/DecisionPills";
 import CreditCheckWizard from "@/components/credit/CreditCheckWizard";
 import CreditAuthorizeModal from "@/components/credit/CreditAuthorizeModal";
 import CreditSuccessSheet from "@/components/credit/CreditSuccessSheet";
@@ -51,6 +52,7 @@ export default function Home() {
   const [creditModalOpen, setCreditModalOpen] = useState(false);
   const [creditSuccessOpen, setCreditSuccessOpen] = useState(false);
   const [chatSessionRestored, setChatSessionRestored] = useState(false);
+  const [activeDecision, setActiveDecision] = useState<BinaryDecisionData | null>(null);
 
   const { runQueue: runTypewriterQueue, cancel: cancelTypewriter, isRunning: typewriterRunning } =
     useTypewriterQueue({
@@ -120,6 +122,7 @@ export default function Home() {
     setCreditModalOpen(false);
     setCreditSuccessOpen(false);
     setSuggestions(WELCOME_SUGGESTIONS);
+    setActiveDecision(null);
     try {
       sessionStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
     } catch {
@@ -372,6 +375,52 @@ export default function Home() {
               setActiveLoadingText(null);
               const block = event.block as AssistantBlock;
               accumulatedBlocks.push(block);
+              // Capture binary_decision blocks for footer pills
+              if (block.type === "binary_decision") {
+                setActiveDecision(block.data);
+              }
+              // Progressively render blocks during streaming
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, blocks: [...accumulatedBlocks] }
+                    : msg
+                )
+              );
+            } else if (event.type === "skeleton_start") {
+              // Show skeleton placeholder for long-running operations
+              // Keep thinking text visible while skeleton shows
+              const cardType = event.cardType as string;
+              const skeletonBlock: AssistantBlock = {
+                type: "skeleton_placeholder",
+                data: { cardType },
+              };
+              accumulatedBlocks.push(skeletonBlock);
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? { ...msg, blocks: [...accumulatedBlocks] }
+                    : msg
+                )
+              );
+            } else if (event.type === "skeleton_end") {
+              // Clear thinking text when skeleton ends
+              setActiveLoadingText(null);
+              // Remove skeleton placeholder when operation completes
+              const cardType = event.cardType as string;
+              const skeletonIndex = accumulatedBlocks.findIndex(
+                (b) => b.type === "skeleton_placeholder" && b.data.cardType === cardType
+              );
+              if (skeletonIndex !== -1) {
+                accumulatedBlocks.splice(skeletonIndex, 1);
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? { ...msg, blocks: [...accumulatedBlocks] }
+                      : msg
+                  )
+                );
+              }
             } else if (event.type === "error") {
               console.error("[Gemini stream error]", event.message);
             } else if (event.type === "session") {
@@ -425,6 +474,7 @@ export default function Home() {
   const handleSend = useCallback(
     (text: string) => {
       clearLoadingDelayTimer();
+      setActiveDecision(null);
       const userMessageId = nextMessageId("user");
       const userMessage: Message = {
         id: userMessageId,
@@ -483,6 +533,13 @@ export default function Home() {
   const handleSuggestionClick = useCallback(
     (text: string) => {
       handleSend(text);
+    },
+    [handleSend]
+  );
+
+  const handleDecisionSelect = useCallback(
+    (value: string) => {
+      handleSend(value);
     },
     [handleSend]
   );
@@ -610,11 +667,17 @@ export default function Home() {
         {/* Pinned footer: not inside scroll region; stays at bottom of the shell */}
         <footer className="relative z-20 shrink-0 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           <div className="chat-shell">
+            {activeDecision && !isBusy && (
+              <DecisionPills
+                decision={activeDecision}
+                onSelect={handleDecisionSelect}
+                disabled={isBusy}
+              />
+            )}
             <ChatInputField
               onSend={handleSend}
               disabled={
                 !chatSessionRestored ||
-                isBusy ||
                 showCreditWizard ||
                 creditModalOpen ||
                 creditSuccessOpen
