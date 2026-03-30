@@ -100,7 +100,6 @@ function moveToOfferRecommendation(session: HomebuyingSession, propertyAddress: 
           statusTitle: "Property search complete",
           heading: "Here\u2019s what we know about your future home",
           imageAlt: "Property photo",
-          displayMode: "single",
           items: [
             {
               listingId: "10001001001",
@@ -123,6 +122,18 @@ function moveToAssetsQuestion(session: HomebuyingSession, downPaymentDecision: s
     content:
       "Nice, that down payment works well with your profile. Next, I\u2019d like to pull in your Casey bank accounts \u2014 Checking, Savings, and Wealth Management \u2014 to verify you have the funds for this purchase. Just say yes and I\u2019ll do a quick review, or let me know if you\u2019d prefer to add accounts manually.",
     session: { ...session, stage: "assets_review_question", downPaymentDecision },
+    blocks: [
+      {
+        type: "binary_decision",
+        data: {
+          questionId: "assets_review_question",
+          positiveLabel: "Yes, review accounts",
+          negativeLabel: "No, add manually",
+          positiveValue: "Yes, review my accounts",
+          negativeValue: "I prefer to add manually",
+        },
+      },
+    ],
     thinkingSteps: NUMBERS_LOADING,
   };
 }
@@ -164,12 +175,6 @@ export function moveToAssetsResult(session: HomebuyingSession, useAutoReview: bo
             { name: "Roth IRA", value: "$20,000" },
             { name: "Investments", value: "$100,000" },
           ],
-        },
-      },
-      {
-        type: "inline_cta",
-        data: {
-          label: "Submit and continue",
         },
       },
     ],
@@ -247,6 +252,16 @@ export function getCreditThreadAfterWizard(session: HomebuyingSession): CaseyRes
           label: "Authorize soft credit check",
           actionLabel: "Authorize soft credit check",
           variant: "inline",
+        },
+      },
+      {
+        type: "binary_decision",
+        data: {
+          questionId: "credit_authorization",
+          positiveLabel: "Authorize",
+          negativeLabel: "Skip for now",
+          positiveValue: "Authorize soft credit check",
+          negativeValue: "Skip credit check for now",
         },
       },
     ],
@@ -420,23 +435,6 @@ export function getCaseyResponse(
     return fallback(session);
   }
 
-  if (session.stage === "assets_results") {
-    if (includesAny(normalized, ["submit and continue", "submit"])) {
-      return {
-        content: "",
-        suggestions: [],
-        blocks: [
-          {
-            type: "status_line",
-            data: { text: "Planning next steps..." },
-          },
-        ],
-        session: { ...session, stage: "credit_intro", creditAuthorized: false },
-        thinkingSteps: SOFT_CREDIT_LOADING,
-      };
-    }
-    return fallback(session);
-  }
 
   if (
     session.stage === "credit_intro" ||
@@ -457,7 +455,7 @@ export function getCaseyResponse(
     ) {
       return {
         content:
-          "Your soft credit check was successful! You\u2019re eligible for the loan.\n\nWhat would you like to do next?",
+          "Your soft credit check was successful! You\u2019re eligible for the loan.\n\nReview your application details below, then tap \"Confirm and submit\" when you're ready.",
         blocks: [
           { type: "status_line", data: { text: "Summarizing your application" } },
           {
@@ -474,10 +472,6 @@ export function getCaseyResponse(
               title: "Review your application",
               fields: buildApplicationSummary({ ...session, creditAuthorized: true }),
             },
-          },
-          {
-            type: "inline_cta",
-            data: { label: "Confirm application" },
           },
         ],
         suggestions: [],
@@ -506,7 +500,7 @@ export function getCaseyResponse(
     if (includesAny(normalized, ["review loan", "review loan terms"])) {
       return {
         content:
-          "Here\u2019s your application summary. Tap Confirm application when you\u2019re ready to submit your loan application.",
+          "Here\u2019s your application summary. Tap \"Confirm and submit\" when you\u2019re ready to submit your loan application.",
         blocks: [
           {
             type: "application_summary",
@@ -515,10 +509,6 @@ export function getCaseyResponse(
               fields: buildApplicationSummary(session),
             },
           },
-          {
-            type: "inline_cta",
-            data: { label: "Confirm application" },
-          },
         ],
         session,
       };
@@ -526,13 +516,8 @@ export function getCaseyResponse(
     if (includesAny(normalized, ["talk to an agent"])) {
       return {
         content:
-          "We\u2019ll connect you with a mortgage specialist. You can still confirm your application below whenever you\u2019re ready.",
-        blocks: [
-          {
-            type: "inline_cta",
-            data: { label: "Confirm application" },
-          },
-        ],
+          "We\u2019ll connect you with a mortgage specialist. You can use the \"Confirm and submit\" button on your application summary whenever you\u2019re ready to proceed.",
+        blocks: [],
         session,
       };
     }

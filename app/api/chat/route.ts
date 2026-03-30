@@ -14,6 +14,7 @@ import {
   getCreditThreadAfterWizard,
   getCaseyResponse,
 } from "@/lib/conversations";
+import { getNextStage, CONVERSATION_STAGES } from "@/lib/stageFlow";
 
 const MODEL = "gemini-2.5-flash";
 const MAX_FUNCTION_ROUNDS = 6;
@@ -48,62 +49,59 @@ function extractBlockMarkers(text: string): {
   return { cleaned: cleaned.trim(), blocks };
 }
 
+/**
+ * Deterministic stage inference based on user actions, not AI response text.
+ * When user answers a question for stage X, advance to stage X+1.
+ */
 function inferStage(
   session: HomebuyingSession,
   toolsCalled: string[],
-  assistantText: string,
-): CaseyStage {
-  if (toolsCalled.includes("compute_affordability")) return "affordability_result";
-  if (toolsCalled.includes("search_properties")) return "property_search_results";
+  userMessage: string,
+): { stage: CaseyStage; completedSteps: CaseyStage[] } {
+  const currentCompleted = session.completedSteps ?? [];
 
-  const lower = assistantText.toLowerCase();
+  // Tool-based transitions (keep these - they're deterministic)
+  if (toolsCalled.includes("compute_affordability")) {
+    return { stage: "affordability_result", completedSteps: currentCompleted };
+  }
+  if (toolsCalled.includes("search_properties")) {
+    return { stage: "property_search_results", completedSteps: currentCompleted };
+  }
 
+  // Conversation stages: advance deterministically when user responds
+  if (CONVERSATION_STAGES.includes(session.stage) && userMessage.trim()) {
+    const nextStage = getNextStage(session.stage);
+    if (nextStage) {
+      const completed = currentCompleted.includes(session.stage)
+        ? currentCompleted
+        : [...currentCompleted, session.stage];
+      return { stage: nextStage, completedSteps: completed };
+    }
+  }
+
+  // Handle transition from welcome/result stages to journey_question
+  // This happens when user initiates the mortgage flow
   if (
-    session.stage === "welcome" ||
-    session.stage === "affordability_result" ||
-    session.stage === "property_search_results"
+    (session.stage === "welcome" ||
+      session.stage === "affordability_result" ||
+      session.stage === "property_search_results") &&
+    userMessage.trim()
   ) {
-    if (lower.includes("home buying journey") || lower.includes("home-buying journey"))
-      return "journey_question";
-    if (lower.includes("property address") || lower.includes("type the address"))
-      return "address_prompt";
-  }
-  if (session.stage === "journey_question") {
-    if (lower.includes("when do you want") || lower.includes("when are you planning"))
-      return "timeline_question";
-  }
-  if (session.stage === "timeline_question") {
-    if (lower.includes("real estate agent")) return "agent_question";
-  }
-  if (session.stage === "agent_question") {
-    if (lower.includes("property") || lower.includes("address"))
-      return "address_prompt";
-  }
-  if (session.stage === "address_prompt") {
-    if (lower.includes("down payment")) return "down_payment_question";
-  }
-  if (session.stage === "down_payment_question") {
-    if (lower.includes("asset") || lower.includes("account"))
-      return "assets_review_question";
-  }
-  if (session.stage === "assets_review_question") {
-    if (lower.includes("found") || lower.includes("account"))
-      return "assets_results";
-  }
-  if (session.stage === "assets_results") {
-    if (lower.includes("credit check") || lower.includes("credit"))
-      return "credit_intro";
-  }
-  if (session.stage === "credit_authorization") {
-    if (lower.includes("review") || lower.includes("application"))
-      return "application_review";
-  }
-  if (session.stage === "application_review") {
-    if (lower.includes("submitted") || lower.includes("confirmed") || lower.includes("confirmation"))
-      return "confirmation";
+    const lower = userMessage.toLowerCase();
+    // User is starting or continuing the mortgage application flow
+    if (
+      lower.includes("mortgage") ||
+      lower.includes("apply") ||
+      lower.includes("loan") ||
+      lower.includes("pre-approv") ||
+      lower.includes("buy a home") ||
+      lower.includes("buying a home")
+    ) {
+      return { stage: "journey_question", completedSteps: currentCompleted };
+    }
   }
 
-  return session.stage;
+  return { stage: session.stage, completedSteps: currentCompleted };
 }
 
 /**
@@ -169,11 +167,10 @@ function deterministicResponse(
       const updatedSession: HomebuyingSession = { ...session, stage: "application_review", creditAuthorized: true };
       const summaryFields = buildApplicationSummary(updatedSession);
       let lines = "";
-      lines += ndjsonLine({ type: "content", text: "Your soft credit check was successful! You're eligible for the loan.\n\nWhat would you like to do next?" });
+      lines += ndjsonLine({ type: "content", text: "Your soft credit check was successful! You're eligible for the loan.\n\nReview your application details below, then tap \"Confirm and submit\" when you're ready." });
       lines += ndjsonLine({ type: "block", block: { type: "status_line", data: { text: "Summarizing your application" } } });
       lines += ndjsonLine({ type: "block", block: { type: "credit_status", data: { title: "Credit Check", statusLabel: "Verified", subtext: "Soft check completed successfully." } } });
       lines += ndjsonLine({ type: "block", block: { type: "application_summary", data: { title: "Review your application", fields: summaryFields } } });
-      lines += ndjsonLine({ type: "block", block: { type: "inline_cta", data: { label: "Confirm application" } } });
       lines += ndjsonLine({ type: "session", session: updatedSession });
       lines += ndjsonLine({ type: "done" });
       return lines;
@@ -191,16 +188,6 @@ function deterministicResponse(
     }
   }
 
-  if (session.stage === "assets_results") {
-    if (lower.includes("submit and continue") || lower.includes("submit")) {
-      const updatedSession: HomebuyingSession = { ...session, stage: "credit_intro", creditAuthorized: false };
-      let lines = "";
-      lines += ndjsonLine({ type: "block", block: { type: "status_line", data: { text: "Planning next steps..." } } });
-      lines += ndjsonLine({ type: "session", session: updatedSession });
-      lines += ndjsonLine({ type: "done" });
-      return lines;
-    }
-  }
 
   if (session.stage === "application_review") {
     if (lower.includes("confirm application") || lower.includes("confirm") || lower === "submit") {
@@ -215,9 +202,8 @@ function deterministicResponse(
     if (lower.includes("review loan") || lower.includes("review loan terms")) {
       const summaryFields = buildApplicationSummary(session);
       let lines = "";
-      lines += ndjsonLine({ type: "content", text: "Here's your application summary. Tap Confirm application when you're ready to submit your loan application." });
+      lines += ndjsonLine({ type: "content", text: "Here's your application summary. Tap \"Confirm and submit\" when you're ready to submit your loan application." });
       lines += ndjsonLine({ type: "block", block: { type: "application_summary", data: { title: "Review your application", fields: summaryFields } } });
-      lines += ndjsonLine({ type: "block", block: { type: "inline_cta", data: { label: "Confirm application" } } });
       lines += ndjsonLine({ type: "session", session });
       lines += ndjsonLine({ type: "done" });
       return lines;
@@ -360,7 +346,14 @@ export async function POST(req: NextRequest) {
             allToolsCalled.push(fc.name);
 
             if (fc.name === "compute_affordability") {
+              // Show skeleton while calculating
+              write({ type: "skeleton_start", cardType: "affordability_result" });
               const result = handleComputeAffordability(fc.args);
+              // Replace skeleton with actual result
+              write({ type: "skeleton_end", cardType: "affordability_result" });
+              // Emit status line first, then the result card
+              write({ type: "block", block: { type: "status_line", data: { text: "Estimate ready" } } });
+              allBlocks.push({ type: "status_line", data: { text: "Estimate ready" } });
               allBlocks.push({ type: "affordability_result", data: result.formatted });
               write({ type: "block", block: { type: "affordability_result", data: result.formatted } });
               functionResponseParts.push({
@@ -375,14 +368,26 @@ export async function POST(req: NextRequest) {
                 type: "thinking",
                 text: formatPropertySearchThinkingLabel(fc.args),
               });
+              // Emit skeleton placeholder while search runs
+              write({
+                type: "skeleton_start",
+                cardType: "property_summary",
+              });
               const result = await withTimeout(
                 handleSearchProperties(fc.args),
                 25_000,
                 "Property search",
               );
+              // Signal skeleton end - frontend will transition smoothly
+              write({ type: "skeleton_end", cardType: "property_summary" });
               if (result.summary.items.length > 0) {
-                allBlocks.push({ type: "property_summary", data: result.summary });
-                write({ type: "block", block: { type: "property_summary", data: result.summary } });
+                // Only show the first (best) property result
+                const singleResult = {
+                  ...result.summary,
+                  items: [result.summary.items[0]],
+                };
+                allBlocks.push({ type: "property_summary", data: singleResult });
+                write({ type: "block", block: { type: "property_summary", data: singleResult } });
               }
               functionResponseParts.push({
                 functionResponse: {
@@ -406,10 +411,26 @@ export async function POST(req: NextRequest) {
         }
 
         const { cleaned, blocks: markerBlocks } = extractBlockMarkers(fullAssistantText);
+
         for (const b of markerBlocks) {
           // Tool already streams property_summary with live listing data; model markers duplicate the same cards.
           if (b.type === "property_summary" && allToolsCalled.includes("search_properties")) {
             continue;
+          }
+          // Skip status_line for property search - PropertySummaryCard has its own statusTitle
+          if (b.type === "status_line" && allToolsCalled.includes("search_properties")) {
+            continue;
+          }
+          // Tool already streams affordability_result and status_line; skip all duplicates from model markers.
+          if (allToolsCalled.includes("compute_affordability")) {
+            if (b.type === "affordability_result") {
+              continue;
+            }
+            // Skip status_line if it's about the estimate (already emitted by tool)
+            if (b.type === "status_line" && typeof b.data?.text === "string" &&
+                b.data.text.toLowerCase().includes("estimate")) {
+              continue;
+            }
           }
           allBlocks.push(b);
           write({ type: "block", block: b });
@@ -419,8 +440,16 @@ export async function POST(req: NextRequest) {
           write({ type: "content", text: cleaned });
         }
 
-        const newStage = inferStage(session, allToolsCalled, fullAssistantText);
-        const updatedSession: HomebuyingSession = { ...session, stage: newStage };
+        const { stage: newStage, completedSteps } = inferStage(
+          session,
+          allToolsCalled,
+          lastUserMessage
+        );
+        const updatedSession: HomebuyingSession = {
+          ...session,
+          stage: newStage,
+          completedSteps,
+        };
 
         if (allToolsCalled.includes("compute_affordability")) {
           const incomeMatch = fullAssistantText.match(/income.*?(\d[\d,]*)/i);

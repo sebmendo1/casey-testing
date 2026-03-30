@@ -13,9 +13,12 @@ import CreditCheckWizard from "@/components/credit/CreditCheckWizard";
 import CreditAuthorizeModal from "@/components/credit/CreditAuthorizeModal";
 import CreditSuccessSheet from "@/components/credit/CreditSuccessSheet";
 import DisclosureLinkButton from "@/components/DisclosureLinkButton";
+import ApplicationReviewPage from "@/components/ApplicationReviewPage";
+import ApplicationSuccessPage from "@/components/ApplicationSuccessPage";
 import { emptyCreditForm } from "@/lib/creditUtils";
 import { useTypewriterQueue } from "@/hooks/useTypewriterQueue";
 import { getCaseyResponse } from "@/lib/conversations";
+import { getContextualPlaceholder } from "@/lib/placeholderHints";
 
 const WELCOME_SUGGESTIONS = [
   "Apply for a mortgage",
@@ -23,8 +26,6 @@ const WELCOME_SUGGESTIONS = [
   "Search for homes in my area",
 ];
 
-const DEFAULT_INPUT_PLACEHOLDER = "How can I help you today?";
-const ADDRESS_INPUT_PLACEHOLDER = "Tell us your property address";
 const TOP_ANCHOR_OFFSET_PX = 6;
 
 /** Persist chat across navigations (e.g. listing detail → back) for this browser tab. */
@@ -53,6 +54,8 @@ export default function Home() {
   const [creditSuccessOpen, setCreditSuccessOpen] = useState(false);
   const [chatSessionRestored, setChatSessionRestored] = useState(false);
   const [activeDecision, setActiveDecision] = useState<BinaryDecisionData | null>(null);
+  const [showReviewPage, setShowReviewPage] = useState(false);
+  const [showSuccessPage, setShowSuccessPage] = useState(false);
 
   const { runQueue: runTypewriterQueue, cancel: cancelTypewriter, isRunning: typewriterRunning } =
     useTypewriterQueue({
@@ -123,12 +126,28 @@ export default function Home() {
     setCreditSuccessOpen(false);
     setSuggestions(WELCOME_SUGGESTIONS);
     setActiveDecision(null);
+    setShowReviewPage(false);
+    setShowSuccessPage(false);
     try {
       sessionStorage.removeItem(CHAT_SESSION_STORAGE_KEY);
     } catch {
       /* ignore */
     }
   }, [cancelTypewriter, clearLoadingDelayTimer]);
+
+  const handleConfirmAndSubmit = useCallback(() => {
+    setShowReviewPage(true);
+  }, []);
+
+  const handleFinalSubmit = useCallback(() => {
+    setShowReviewPage(false);
+    setShowSuccessPage(true);
+    setSession((s) => ({ ...s, stage: "confirmation" }));
+  }, []);
+
+  const handleSuccessClose = useCallback(() => {
+    setShowSuccessPage(false);
+  }, []);
 
   useEffect(() => {
     try {
@@ -235,7 +254,7 @@ export default function Home() {
               ? {
                   ...msg,
                   content: "",
-                  displayContent: undefined,
+                  displayContent: "",  // Use empty string for consistency
                   blocks,
                   isStreaming: false,
                 }
@@ -255,7 +274,7 @@ export default function Home() {
               ? {
                   ...msg,
                   content: fullText,
-                  displayContent: undefined,
+                  displayContent: fullText,  // Use fullText instead of undefined to avoid flash
                   blocks,
                   isStreaming: false,
                 }
@@ -388,8 +407,8 @@ export default function Home() {
                 )
               );
             } else if (event.type === "skeleton_start") {
-              // Show skeleton placeholder for long-running operations
-              // Keep thinking text visible while skeleton shows
+              // Skeleton replaces the status line (only one loading indicator at a time)
+              setActiveLoadingText(null);
               const cardType = event.cardType as string;
               const skeletonBlock: AssistantBlock = {
                 type: "skeleton_placeholder",
@@ -404,8 +423,6 @@ export default function Home() {
                 )
               );
             } else if (event.type === "skeleton_end") {
-              // Clear thinking text when skeleton ends
-              setActiveLoadingText(null);
               // Remove skeleton placeholder when operation completes
               const cardType = event.cardType as string;
               const skeletonIndex = accumulatedBlocks.findIndex(
@@ -565,7 +582,7 @@ export default function Home() {
       <div
         className="relative flex h-full w-full flex-col overflow-hidden"
         style={{ backgroundColor: CHAT_SURFACE }}
-        aria-hidden={creditModalOpen || creditSuccessOpen || showCreditWizard ? true : undefined}
+        aria-hidden={creditModalOpen || creditSuccessOpen || showCreditWizard || showReviewPage || showSuccessPage ? true : undefined}
       >
         <div className="chat-shell">
           <ChatHeader onBack={resetToWelcome} />
@@ -573,7 +590,7 @@ export default function Home() {
         <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           <div
             ref={scrollRef}
-            className="chat-shell flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
+            className="chat-shell scrollbar-hidden flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
             onPointerDownCapture={(event) => {
               pointerStartRef.current = { x: event.clientX, y: event.clientY };
             }}
@@ -641,6 +658,7 @@ export default function Home() {
                           blocks={msg.blocks}
                           onAction={handleSuggestionClick}
                           onOpenCreditAuthorize={() => setCreditModalOpen(true)}
+                          onConfirmApplication={handleConfirmAndSubmit}
                         />
                         {msg.role === "assistant" &&
                           !msg.isStreaming &&
@@ -652,7 +670,7 @@ export default function Home() {
                     ))}
                     {activeLoadingText !== null && (
                       <div key="loading-status" className="message-stream-enter">
-                        <AssistantStatusLine text={activeLoadingText} />
+                        <AssistantStatusLine text={activeLoadingText} isLoading={true} />
                       </div>
                     )}
                   </div>
@@ -680,9 +698,11 @@ export default function Home() {
                 !chatSessionRestored ||
                 showCreditWizard ||
                 creditModalOpen ||
-                creditSuccessOpen
+                creditSuccessOpen ||
+                showReviewPage ||
+                showSuccessPage
               }
-              placeholder={inputMode === "property_address" ? ADDRESS_INPUT_PLACEHOLDER : DEFAULT_INPUT_PLACEHOLDER}
+              placeholder={getContextualPlaceholder(session.stage, inputMode)}
             />
             <p
               className="max-w-prose px-6 pb-0 pt-0 text-center text-[11px] leading-relaxed"
@@ -718,6 +738,18 @@ export default function Home() {
       />
 
       <CreditSuccessSheet open={creditSuccessOpen} onContinue={handleCreditSuccessContinue} />
+
+      <ApplicationReviewPage
+        open={showReviewPage}
+        session={session}
+        onBack={() => setShowReviewPage(false)}
+        onSubmit={handleFinalSubmit}
+      />
+
+      <ApplicationSuccessPage
+        open={showSuccessPage}
+        onClose={handleSuccessClose}
+      />
     </div>
   );
 }

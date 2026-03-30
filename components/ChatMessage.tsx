@@ -10,6 +10,7 @@ import CreditAuthorizationCard from "./CreditAuthorizationCard";
 import ApplicationSummaryCard from "./ApplicationSummaryCard";
 import CreditCheckStatusCard from "./credit/CreditCheckStatusCard";
 import AffordabilityResultCard from "./AffordabilityResultCard";
+import SkeletonCard from "./skeletons/SkeletonCard";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -20,6 +21,7 @@ interface ChatMessageProps {
   blocks?: AssistantBlock[];
   onAction?: (value: string) => void;
   onOpenCreditAuthorize?: () => void;
+  onConfirmApplication?: () => void;
 }
 
 export default function ChatMessage({
@@ -31,6 +33,7 @@ export default function ChatMessage({
   blocks,
   onAction,
   onOpenCreditAuthorize,
+  onConfirmApplication,
 }: ChatMessageProps) {
   if (role === "user") {
     return (
@@ -59,15 +62,11 @@ export default function ChatMessage({
       {timestamp && (
         <p className="mb-1 text-[11px] text-[#00285599]">{timestamp}</p>
       )}
-      {(displayContent ?? content).trim().length > 0 && (
-        <AssistantRichText
-          displayText={displayContent ?? content}
-          fullText={content.trim().length > 0 ? content : undefined}
-        />
-      )}
+      {/* Blocks render FIRST (status line, property card, etc.) */}
       {blocks && blocks.length > 0 && (
-        <div className="mt-5 space-y-4">
+        <div className="space-y-4">
           {blocks.map((block, index) => {
+            // Status lines have their own animation
             if (block.type === "status_line") {
               return (
                 <AssistantStatusLine
@@ -76,42 +75,69 @@ export default function ChatMessage({
                 />
               );
             }
-            if (block.type === "property_summary") {
-              return <PropertySummaryCard key={`property-${index}`} data={block.data} />;
-            }
-            if (block.type === "account_group") {
-              return <AccountGroupCard key={`accounts-${index}`} data={block.data} />;
-            }
-            if (block.type === "inline_cta" && onAction) {
+            // Skeleton placeholders with shimmer
+            if (block.type === "skeleton_placeholder") {
               return (
+                <div key={`skeleton-${block.data.cardType}-${index}`} className="skeleton-shimmer">
+                  <SkeletonCard cardType={block.data.cardType} />
+                </div>
+              );
+            }
+            // Binary decisions rendered in footer
+            if (block.type === "binary_decision") {
+              return null;
+            }
+            // All card blocks with smooth enter animation
+            let cardContent: React.ReactNode = null;
+            if (block.type === "property_summary") {
+              cardContent = <PropertySummaryCard data={block.data} />;
+            } else if (block.type === "account_group") {
+              cardContent = <AccountGroupCard data={block.data} />;
+            } else if (block.type === "inline_cta" && onAction) {
+              cardContent = (
                 <InlineActionPill
-                  key={`action-${block.data.label}-${index}`}
                   label={block.data.label}
                   onClick={onAction}
                 />
               );
-            }
-            if (block.type === "credit_authorization") {
-              return (
+            } else if (block.type === "credit_authorization") {
+              cardContent = (
                 <CreditAuthorizationCard
-                  key={`credit-auth-${index}`}
                   data={block.data}
                   onToggle={onAction}
                   onOpenAuthorize={onOpenCreditAuthorize}
                 />
               );
+            } else if (block.type === "credit_status") {
+              cardContent = <CreditCheckStatusCard data={block.data} />;
+            } else if (block.type === "application_summary") {
+              cardContent = (
+                <ApplicationSummaryCard
+                  data={block.data}
+                  onConfirm={onConfirmApplication}
+                />
+              );
+            } else if (block.type === "affordability_result") {
+              cardContent = <AffordabilityResultCard data={block.data} />;
             }
-            if (block.type === "credit_status") {
-              return <CreditCheckStatusCard key={`credit-status-${index}`} data={block.data} />;
-            }
-            if (block.type === "application_summary") {
-              return <ApplicationSummaryCard key={`summary-${index}`} data={block.data} />;
-            }
-            if (block.type === "affordability_result") {
-              return <AffordabilityResultCard key={`afford-${index}`} data={block.data} />;
+            if (cardContent) {
+              return (
+                <div key={`${block.type}-${index}`} className="animate-card-enter">
+                  {cardContent}
+                </div>
+              );
             }
             return null;
           })}
+        </div>
+      )}
+      {/* Text content renders AFTER blocks (below the property card) */}
+      {(displayContent ?? content).trim().length > 0 && (
+        <div className={blocks && blocks.length > 0 ? "mt-5" : ""}>
+          <AssistantRichText
+            displayText={displayContent ?? content}
+            fullText={content.trim().length > 0 ? content : undefined}
+          />
         </div>
       )}
     </div>
